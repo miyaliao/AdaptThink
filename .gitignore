@@ -1,0 +1,19 @@
+# Model weights
+/model/
+
+# Python environment
+/.venv/
+__pycache__/
+*.pyc
+.env
+
+# Training outputs
+/outputs/
+/checkpoints/
+/wandb/
+
+# Slurm logs
+/gpu_check_*.out
+/gpu_check_*.err
+/gpu_probe_*.out
+/gpu_probe_*.err
