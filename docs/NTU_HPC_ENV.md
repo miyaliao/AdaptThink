@@ -1,174 +1,125 @@
-# AdaptThink — NTU HPC Project Environment
+# NTU TC1 — AdaptThink 1.5B Inference Environment
 
-Updated: 2026-10-27. This file documents the **project-relevant** environment, not the entire cluster. "Observed" refers to terminal output; "To verify" means not yet confirmed on a GPU compute node.
+Validated on **2026-10-27**. Scope: DeepSeek-R1-Distill-Qwen-1.5B baseline evaluation on NTU TC1; this is **not** the RL training environment.
 
-## 1. Repository, environment and model
+## Paths and activation
 
-| Item | Value | Evidence |
-| --- | --- | --- |
-| Account | n2602710a | Observed |
-| Login host | CCDS-TC1 | Observed |
-| Project root | /tc1home/UG/n2602710a/AdaptThink | User-reported |
-| GitHub fork (origin) | https://github.com/miyaliao/AdaptThink | Verified |
-| Research upstream | https://github.com/THU-KEG/AdaptThink | Verified |
-| Conda base | /tc1apps/anaconda3 | Observed |
-| Conda version | 26.5.3 | Observed |
-| Project Conda environment | adaptthink (expected path: $HOME/.conda/envs/adaptthink) | Created during setup; confirm path |
-| Project Python | 3.10 target | Upstream recommendation; check installed version |
-| Base model | model/DeepSeek-R1-Distill-Qwen-1.5B | Downloaded per project setup; verify files |
-| Slurm partition | UGGPU-TC1 | Observed from submitted job |
-| Slurm QoS | normal | Observed from submitted job |
+- Repository: `/tc1home/UG/n2602710a/AdaptThink`
+- Model: `model/DeepSeek-R1-Distill-Qwen-1.5B` (excluded from Git)
+- Python environment: **`.venv`**, created using NTU's `module load python/3.10`. Do **not** activate the failed `$HOME/.conda/envs/adaptthink` path.
+- Project GitHub: https://github.com/miyaliao/AdaptThink
 
-Keep downloaded weights in **model/** and outside Git. The fork's .gitignore already excludes /model/.
-
-### Check the actual Python environment
-
-~~~bash
-module load anaconda
-source "$(conda info --base)/etc/profile.d/conda.sh"
-conda env list
-conda activate "$HOME/.conda/envs/adaptthink"
+```bash
+cd /tc1home/UG/n2602710a/AdaptThink
+module load python/3.10
+source .venv/bin/activate
+export PYTHONNOUSERSITE=1
 which python
 python --version
-python -m pip show torch vllm transformers flash-attn 2>/dev/null
-~~~
+```
 
-The initial SSH environment used /usr/bin/python, and after loading Anaconda used /tc1apps/anaconda3/bin/python. The initial environment list showed only base; the dedicated environment was created later. Do not confuse the base environment with the AdaptThink environment.
+Validated installed versions:
 
-## 2. Reusable CUDA/GPU software
+| Component | Version |
+| --- | --- |
+| Python | 3.10 (`.venv`) |
+| PyTorch | 2.6.0+cu124 |
+| Transformers | 4.51.2 |
+| vLLM | 0.8.5 |
+| XFormers | 0.0.29.post2 |
+| XGrammar | 0.1.18 |
+| SymPy | 1.13.1 |
+| pylatexenc | 2.11 |
 
-The NTU module system showed **available CUDA toolkit modules**:
+The official score code `src/adapt_think_rm.py` also imports `math_verify`; its installation/compatibility is **not yet validated**. Do not run `pip install -r requirements.txt` unnecessarily just to reproduce inference.
 
-- cuda/11.8, cuda/12.2, cuda/12.3, cuda/12.4, cuda/12.5, cuda/12.6, cuda/12.8, cuda/12.9 and cuda/13.0.
-- anaconda, miniconda, python/3.10, python/3.11 and other Python versions.
-- slurm/slurm/23.02.8.
+## GPU / SLURM
 
-These are **available modules**, not proof of which CUDA toolkit has been loaded, which NVIDIA driver is installed, or which GPU has been allocated. The TC1 User Guide identifies its cards as **NVIDIA Tesla V100 32GB (Volta/SM70)**; verify the actual allocated GPU with nvidia-smi in a Slurm job. The previous MyTCinfo output gave the assigned normal QoS limits: **1 GPU, 20 CPUs, 64 GB host RAM, 2 submitted jobs, and 6 hours maximum wall time per job**. These limits may change by semester, so recheck MyTCinfo before submission. On V100 use float16 (not bfloat16), and do not assume FlashAttention-2 works; vLLM 0.8.2 supports SM70 with a suitable backend.
+- Verified compute node: `TC1N03`.
+- GPU: **NVIDIA Tesla V100-PCIE-32GB**, ~31.73 GiB usable.
+- NVIDIA driver **580.173.02**; `nvidia-smi` shows CUDA driver support **13.0**.
+- Python/PyTorch uses bundled CUDA runtime **12.4**. The driver-reported 13.0 is *not* the installed PyTorch CUDA runtime.
+- Slurm partition: `UGGPU-TC1`, QoS: `normal`; observed working request: **one GPU**, 4 CPUs, 16 GB RAM, 15–30 minutes.
+- The user's previous normal QoS record indicated one GPU and a 6-hour job ceiling; recheck `MyTCinfo` when submitting larger jobs.
+- **Run GPU code only in Slurm jobs, not on login host `CCDS-TC1`.**
 
-Check loaded modules with:
+Recommended Slurm header for a short inference test:
 
-~~~bash
-module list
-module avail cuda
-# Do not choose a toolkit version until PyTorch/driver compatibility is checked.
-# module load cuda/12.4
-# nvcc --version
-~~~
-
-Upstream AdaptThink uses vLLM **0.8.2**, transformers **4.51.2** (in requirements.txt), FlashAttention, and Python **3.10**. These are upstream requirements, **not confirmation that those packages are installed** locally. Avoid an indiscriminate dependency install before the CUDA/driver/PyTorch compatibility check.
-
-## 3. GPU allocation through Slurm
-
-An earlier test job was submitted as job **69774**, requesting:
-
-- partition UGGPU-TC1; QoS normal; 1 node; 1 GPU
-- memory 8 GB; time 10 minutes
-
-The submission message did not confirm successful GPU allocation. Check status and logs:
-
-~~~bash
-sacct -j 69774 --format=JobID,JobName,State,ExitCode,Elapsed,NodeList
-cat ~/SC4001-Efficient-Reasoning/gpu_check_69774.out
-cat ~/SC4001-Efficient-Reasoning/gpu_check_69774.err
-~~~
-
-A fresh project-specific probe can be created in the project root:
-
-~~~bash
-cat > gpu_probe.sh <<'EOF'
+```bash
 #!/bin/bash
 #SBATCH --partition=UGGPU-TC1
 #SBATCH --qos=normal
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
-#SBATCH --mem=8G
-#SBATCH --time=00:10:00
-#SBATCH --job-name=adaptthink_gpu_probe
-#SBATCH --output=gpu_probe_%j.out
-#SBATCH --error=gpu_probe_%j.err
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --time=00:30:00
+#SBATCH --output=baseline_%j.out
+#SBATCH --error=baseline_%j.err
+```
 
-echo "Compute host: $(hostname)"
-echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
-nvidia-smi
-module load anaconda
-source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate "$HOME/.conda/envs/adaptthink"
-python --version
-python - <<'PY'
-try:
-    import torch
-    print("PyTorch:", torch.__version__)
-    print("PyTorch CUDA runtime:", torch.version.cuda)
-    print("CUDA available:", torch.cuda.is_available())
-    if torch.cuda.is_available():
-        gpu = torch.cuda.get_device_properties(0)
-        print("GPU:", gpu.name)
-        print("VRAM (GiB):", round(gpu.total_memory / 2**30, 2))
-except ImportError:
-    print("PyTorch not installed yet")
-PY
-EOF
+Inside the job (after `cd` to repository root):
 
-sbatch gpu_probe.sh
-squeue -u n2602710a
-# Then inspect gpu_probe_<JOBID>.out and gpu_probe_<JOBID>.err
-~~~
+```bash
+source .venv/bin/activate
+export PYTHONNOUSERSITE=1
+export VLLM_USE_V1=0
+export VLLM_ATTENTION_BACKEND=XFORMERS
+export TOKENIZERS_PARALLELISM=false
+```
 
-The guide says the cluster uses V100 32GB; confirm the allocated GPU and driver with the job output. A login-node test is not sufficient.
+## Verified vLLM long-context configuration
 
-## 4. Base model and AdaptThink-specific compatibility
+V100 supports FP16 but **not native BF16** and does **not** support FlashAttention-2. These settings succeeded for 17,408 max context:
 
-Base model location:
+```python
+from vllm import LLM, SamplingParams
 
-~~~bash
-cd /tc1home/UG/n2602710a/AdaptThink
-du -sh model/DeepSeek-R1-Distill-Qwen-1.5B
-ls -lh model/DeepSeek-R1-Distill-Qwen-1.5B/
-~~~
+llm = LLM(
+    model="model/DeepSeek-R1-Distill-Qwen-1.5B",
+    dtype="float16",
+    tensor_parallel_size=1,
+    gpu_memory_utilization=0.80,
+    max_model_len=17408,  # 1024 prompt + 16384 output budget
+    max_num_seqs=4,
+    enable_chunked_prefill=False,
+    enforce_eager=True,
+)
 
-The upstream README requires checking the downloaded model's tokenizer_config.json chat_template for the expected assistant/thinking prefix before training. Upstream also publishes precomputed reference sampling results under data/train/ref_results, potentially avoiding expensive repeated presampling if the data/model configuration matches.
+# Speed benchmark only; choose exact evaluation sampling separately.
+params = SamplingParams(temperature=0.6, top_p=0.95, max_tokens=4096)
+```
 
-The upstream **1.5B full RL training** was reported using a node with **8 H800 GPUs**. This is *not* evidence that NTU provides H800s. Determine NTU GPU allocation and scale the experiment before reproducing the original large training script.
+**Critical:** The same 17,408-token setup with `enable_chunked_prefill=True` and `max_num_batched_tokens=4096` failed at generation time with `LLVM ERROR: Failed to compute parent layout for slice layout` (job 69983). Disabling chunked prefill fixed that failure (job 69987). Keep it disabled unless separately tested.
 
-## 5. Git workflow
+`max_num_seqs` is the primary concurrency parameter to benchmark (e.g., 4 / 8 / 16), with **enough submitted requests** to saturate it. `--cpus-per-task` is not the equivalent of vLLM concurrency.
 
-The intended remotes are:
+## Benchmarks on one V100
 
-- origin: git@github.com:miyaliao/AdaptThink.git
-- upstream: https://github.com/THU-KEG/AdaptThink.git
+| Job | Workload | Output tokens | Generation time | Aggregate output throughput | Result |
+| --- | --- | ---: | ---: | ---: | --- |
+| 69968 | Transformers, 1 short question, greedy | 256 | 7.91 s | 32.38 tok/s | Pass |
+| 69980 | vLLM, 8 short questions, 4K context | 1,001 | 3.22 s | 310.80 tok/s | Pass |
+| 69983 | vLLM, 17,408 context, chunked prefill ON | — | — | — | LLVM crash |
+| 69987 | vLLM, 17,408 context, chunked prefill OFF | 1,001 | 4.09 s | 244.84 tok/s | Pass |
+| 69992 | vLLM, 17,408 context, 4 MATH-500 prompts, max 4,096 output, temp 0.6 | 9,053 | 53.93 s | **167.88 tok/s** | Pass |
 
-Check and synchronize:
+Model load time was ~25–32 s. These are **different workloads**; do not interpret the speed ratios as controlled comparisons. Long outputs up to 16K have **not** yet been benchmarked.
 
-~~~bash
-cd /tc1home/UG/n2602710a/AdaptThink
-git remote -v
-git branch --show-current
-git status -sb
-git fetch origin
-# If on main and local changes won't conflict:
-git pull --ff-only origin main
-~~~
+Existing local scripts/logs (may be untracked): `smoke_gpu.sbatch`, `smoke_69968.*`, `vllm_smoke.sbatch`, `vllm_smoke_69980.*`, `vllm_long_context.sbatch`, `vllm_long_69983.*`, `vllm_long_fix.sbatch`, `vllm_fix_69987.*`, `vllm_benchmark.sbatch`, `vllm_benchmark_69992.*`. GitHub does **not** automatically contain local Slurm logs.
 
-Submit code/doc changes from HPC with git add, git commit, and git push to origin. Never commit model weights, secrets, Conda environments, checkpoints or logs.
+## Baseline evaluation next
 
-## 6. Information still to verify
+Reuse repository datasets `data/test/gsm8k.json` (**1,319**), `data/test/math.json` (**500**), `data/test/aime.json` (**30**). Full evaluation: AIME repeated 16 times -> **2,299 generations/mode**, **4,598 total** across Thinking / NoThinking.
 
-1. Output of the GPU probe: actual GPU type, VRAM, driver, CUDA visibility and job status.
-2. Exact Conda environment prefix and Python version.
-3. Installed PyTorch, vLLM, transformers and FlashAttention versions.
-4. Loaded CUDA toolkit and compatibility with the PyTorch CUDA runtime.
-5. Model directory integrity and tokenizer template.
+Proposed quick experiment: deterministic seed **42**, per-dataset 25% sampling: **330 GSM8K + 125 MATH-500 + 8 AIME** independent questions (round half-up for AIME). Keep the same sampled question IDs in both modes and retain 16 generations/AIME question (128 AIME outputs per mode) -> **1,166 outputs total**. Document exact sample IDs for reproducibility. This is a **subset study**, not a full published baseline.
 
-## 7. Evaluation baseline: scope and runtime planning
+Use the official scoring logic in `src/adapt_think_rm.py`, including the Thinking/NoThinking output convention and boxed-answer extraction. Beware: original `scripts/run_eval_hf.sh` also evaluates 7B and MMLU, assumes 8 GPUs, and uses author-specific paths; adapt it rather than running as-is. Persist generations incrementally, with resumable Slurm shards below the 6-hour limit.
 
-- Model: local DeepSeek-R1-Distill-Qwen-1.5B (before AdaptThink RL).
-- Original Thinking: ordinary model thinking prefix/template.
-- Original NoThinking: force the first generated token to be </think> (empty thinking segment), as defined in the paper.
-- Evaluation data already present in this repo: GSM8K 1,319; MATH500 500; AIME2024 30 questions each sampled 16 times (480 generations).
-- Thus 2,299 outputs per mode; 4,598 outputs for both modes. Use 16K context/output budget and temperature 0.6 per paper, with exact tokenizer/sampling checks before claiming numerical replication.
-- Use the original src/adapt_think_rm.py checker; its imports include math_verify, sympy, and pylatexenc, which must be verified in the active environment.
-- Do not run the upstream scripts/run_eval_hf.sh unchanged: it evaluates 7B and MMLU too, assumes 8 GPUs, and has absolute paths.
-- Expected generated tokens estimated from paper mean lengths: Thinking 9.53M; NoThinking 1.75M; combined ~11.28M (input tokens/runtime setup excluded).
-- At hypothetical sustained 100/200/400 generated tokens/s, generation takes about 31.3/15.7/7.8 h respectively, before overhead. Actual throughput must be measured on the V100.
-- A six-hour per-job limit requires resumable batches unless measured aggregate throughput is unusually high.
-- Recommended first experiment: GPU/Conda probe; 3–5 GSM8K cases per mode; a few MATH500; one longer AIME; save outputs and time by dataset/mode.
+## Fast rerun checklist
+
+1. `git pull --ff-only origin main` and `source .venv/bin/activate`.
+2. Submit an inference job with the SLURM header and three vLLM environment variables above.
+3. Start from the **working, chunked-prefill-OFF** long-context configuration.
+4. Verify local model path and official scorer imports before evaluation.
+5. Record generated output tokens, elapsed seconds, throughput, mode and seed for each run.
