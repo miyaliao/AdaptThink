@@ -22,3 +22,6 @@ __pycache__/
 
 /baseline_1p5b_*.out
 /baseline_1p5b_*.err
+
+/aime30_extend_*.out
+/aime30_extend_*.err
