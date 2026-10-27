@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Verify the frozen AdaptThink baseline split against exact dataset bytes.
+"""Validate canonical GSM8K/MATH500 fixed indices and ALL 30 AIME questions.
 
-Pure Python stdlib. Does not import torch, vLLM or run GPU workloads.
+Python standard library only; safe on an SSH login node without a GPU.
 """
 import argparse
 import hashlib
@@ -14,79 +14,88 @@ ROOT = Path(__file__).resolve().parents[1]
 SPLIT = ROOT / "data/splits/adaptthink_original_baseline_seed42.json"
 
 
-def git_blob_sha1(data):
-    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+def git_blob_sha1(raw):
+    return hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()
 
 
-def expected_ids(split):
-    result = []
-    for ds in split["dataset_order"]:
-        cfg = split["source_files"][ds]
-        for i in cfg["selected_indices"]:
-            for rep in range(cfg["repetitions"]):
-                result.append(f"{ds}:{i}:{rep}")
-    return result
+def canonical_ids(split, dataset):
+    cfg = split["source_files"][dataset]
+    return [
+        f"{dataset}:{index}:{rep}"
+        for index in cfg["selected_indices"]
+        for rep in range(cfg["repetitions"])
+    ]
+
+
+def verify_manifest_if_present(split):
+    """A previous 8-AIME run is historical; don't mistake it for future split."""
+    path = ROOT / "outputs/baseline_subset_25pct_seed42/manifest.json"
+    if not path.exists():
+        return
+    old_ids = json.loads(path.read_text(encoding="utf-8")).get("sample_ids", [])
+    expected_gsm_math = canonical_ids(split, "gsm8k") + canonical_ids(split, "math")
+    actual_gsm_math = [x for x in old_ids if not x.startswith("aime:")]
+    if actual_gsm_math != expected_gsm_math:
+        raise RuntimeError("Historical manifest GSM8K/MATH500 differs from canonical split")
+    canonical_aime = set(canonical_ids(split, "aime"))
+    old_aime = [x for x in old_ids if x.startswith("aime:")]
+    if not set(old_aime).issubset(canonical_aime):
+        raise RuntimeError("Historical manifest contains invalid AIME task IDs")
+    print("OK historical run: GSM8K/MATH500 match; AIME canonical remains all 30")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--show-indices", action="store_true")
     args = parser.parse_args()
-
     split = json.loads(SPLIT.read_text(encoding="utf-8"))
-    if split["index_base"] != 0 or split["seed_base"] != 42:
-        raise RuntimeError("Unexpected split schema/seed")
+    if (split.get("schema_version") != 2 or split.get("index_base") != 0
+            or split.get("seed_base") != 42):
+        raise RuntimeError("Unexpected canonical split schema/seed")
 
-    for name in split["dataset_order"]:
-        cfg = split["source_files"][name]
-        data = (ROOT / cfg["path"]).read_bytes()
-        digest = git_blob_sha1(data)
-        if digest != cfg["git_blob_sha1"]:
-            raise RuntimeError(
-                f"{name}: dataset bytes changed; expected Git blob "
-                f"{cfg['git_blob_sha1']}, got {digest}"
+    total_generations = 0
+    for ds in split["dataset_order"]:
+        cfg = split["source_files"][ds]
+        raw = (ROOT / cfg["path"]).read_bytes()
+        blob = git_blob_sha1(raw)
+        if blob != cfg["git_blob_sha1"]:
+            raise RuntimeError(f"{ds}: expected Git blob {cfg['git_blob_sha1']}; found {blob}")
+        rows = json.loads(raw)
+        if len(rows) != cfg["num_rows"]:
+            raise RuntimeError(f"{ds}: dataset length changed")
+        indices = cfg["selected_indices"]
+        if indices != sorted(set(indices)):
+            raise RuntimeError(f"{ds}: indices not sorted/unique")
+        if not all(0 <= i < len(rows) for i in indices):
+            raise RuntimeError(f"{ds}: invalid row index")
+        if ds == "aime":
+            if cfg["selection_method"] != "all_rows" or indices != list(range(30)):
+                raise RuntimeError("AIME must contain all 30 questions")
+            if cfg["repetitions"] != 16:
+                raise RuntimeError("AIME must be generated 16 times per question and mode")
+        else:
+            if cfg["selection_method"] != "seeded_25pct" or cfg["repetitions"] != 1:
+                raise RuntimeError(f"{ds}: expected one generation and 25% fixed split")
+            n = math.floor(len(rows) * 0.25 + 0.5)
+            actual = sorted(
+                random.Random(cfg["selection_seed"]).sample(range(len(rows)), n)
             )
-        items = json.loads(data)
-        if len(items) != cfg["num_rows"]:
-            raise RuntimeError(f"{name}: row count changed")
-        chosen = cfg["selected_indices"]
-        if chosen != sorted(set(chosen)):
-            raise RuntimeError(f"{name}: indices are not unique/ascending")
-        count = math.floor(len(items) * .25 + .5)
-        expected = sorted(
-            random.Random(cfg["selection_seed"]).sample(range(len(items)), count)
-        )
-        if chosen != expected:
-            raise RuntimeError(
-                f"{name}: stored indices differ from original seed-based selection"
-            )
+            if actual != indices:
+                raise RuntimeError(f"{ds}: mismatch from seed-based sample")
+        total_generations += len(indices) * cfg["repetitions"]
         print(
-            f"OK {name}: {len(chosen)} / {len(items)} questions, "
-            f"seed={cfg['selection_seed']}, Git blob={digest}"
+            f"OK {ds}: {len(indices)}/{len(rows)} questions; "
+            f"{cfg['repetitions']} generation(s) per question; blob={blob}"
         )
         if args.show_indices:
-            print(f"  selected_indices={chosen}")
+            print(f"  selected_indices={indices}")
 
-    full = split["aime_full_extension"]
-    if full["selected_indices"] != list(range(30)) or full["repetitions"] != 16:
-        raise RuntimeError("AIME full extension specification changed")
-
-    manifest = ROOT / "outputs/baseline_subset_25pct_seed42/manifest.json"
-    ids = expected_ids(split)
-    if manifest.is_file():
-        saved = json.loads(manifest.read_text(encoding="utf-8"))
-        if saved.get("sample_ids") != ids:
-            raise RuntimeError(
-                "Original completed baseline manifest sample_ids do not match split"
-            )
-        print("OK original run manifest: all sample IDs match the frozen split")
-    else:
-        print("Original run manifest not present; checked tracked files only")
-
+    verify_manifest_if_present(split)
     print(
-        f"SPLIT_VERIFIED: questions={sum(len(split['source_files'][n]['selected_indices']) for n in split['dataset_order'])} "
-        f"generations_per_mode={len(ids)} total_two_modes={2*len(ids)} "
-        "AIME_full_questions=30"
+        f"SPLIT_VERIFIED: questions="
+        f"{sum(len(split['source_files'][n]['selected_indices']) for n in split['dataset_order'])}"
+        f" generations_per_mode={total_generations}"
+        f" total_two_modes={2*total_generations} AIME_full_questions=30"
     )
 
 
