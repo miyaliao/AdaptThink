@@ -123,3 +123,19 @@ Use the official scoring logic in `src/adapt_think_rm.py`, including the Thinkin
 3. Start from the **working, chunked-prefill-OFF** long-context configuration.
 4. Verify local model path and official scorer imports before evaluation.
 5. Record generated output tokens, elapsed seconds, throughput, mode and seed for each run.
+
+## Reproducible concurrency sweep (added 2026-10-27)
+
+The **only** purpose of this benchmark is selecting `max_num_seqs` before the 25% baseline evaluation.
+
+```bash
+cd /tc1home/UG/n2602710a/AdaptThink
+git pull --ff-only origin main
+sbatch scripts/ntu_vllm_concurrency.sbatch
+# After job ends, replace JOBID:
+grep -E 'BENCH_RESULT|CONFIG_STATUS|SUMMARY|max_num_seqs=' vllm_concurrency_JOBID.out
+```
+
+The single Slurm job tests **4, 8 and 16** sequentially, rebuilding the engine between settings. All three use the **same 32 MATH-500 questions**, selected with seed 42, 17,408 max context, FP16, XFormers, 0.80 GPU utilization, **chunked prefill OFF**. For an apples-to-apples *speed-only* comparison, each question generates exactly **2,048 tokens** using `ignore_eos=True` (32 × 2,048 = 65,536 output tokens per configuration); this is **not** how baseline evaluation will generate/stop or grade responses. It is intentionally synthetic fixed-work benchmarking. See the vLLM 0.8.5 SamplingParams documentation for `ignore_eos` and per-prompt `seed`.
+
+Results are written locally to `outputs/benchmarks/vllm_concurrency/seqs{4,8,16}_n32_tok2048_seed42.json`; Slurm logs remain locally as `vllm_concurrency_<JOBID>.out/.err`. These outputs are ignored by Git. Inspect the summary to select the fastest **successful** configuration. Do not claim an optimal full-16K setting until a representative 16K generation benchmark has also run.
