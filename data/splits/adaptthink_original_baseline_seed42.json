@@ -1,10 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "split_name": "adaptthink_original_baseline_seed42",
-  "purpose": "Frozen zero-based row indices for the completed 25% GSM8K/MATH-500 baseline and the original eight-question AIME subset; AIME later expanded to all 30.",
+  "purpose": "Canonical evaluation split for all future AdaptThink experiments: GSM8K 330/1319, MATH-500 125/500, AIME 2024 30/30 (16 generations per AIME question and mode).",
   "index_base": 0,
   "task_id_format": "{dataset}:{row_index}:{repeat_index}",
-  "extraction": "Original scripts/eval_baseline_subset.py: sorted(random.Random(42 + OFFSETS[name]).sample(range(len(items)), floor(len(items)*0.25+0.5)))",
+  "extraction": "GSM8K/MATH500: sorted(random.Random(42 + OFFSETS[name]).sample(range(len(items)), floor(len(items)*0.25+0.5))). AIME: all indices 0..29, no sampling.",
   "seed_base": 42,
   "dataset_order": [
     "gsm8k",
@@ -349,7 +349,8 @@
         1312,
         1316
       ],
-      "repetitions": 1
+      "repetitions": 1,
+      "selection_method": "seeded_25pct"
     },
     "math": {
       "path": "data/test/math.json",
@@ -483,65 +484,55 @@
         486,
         489
       ],
-      "repetitions": 1
+      "repetitions": 1,
+      "selection_method": "seeded_25pct"
     },
     "aime": {
       "path": "data/test/aime.json",
       "git_blob_sha1": "e1a705f2a03b9f8a0c4a2d334fc71eddc30bad7d",
       "num_rows": 30,
-      "selection_seed": 400042,
+      "selection_seed": null,
       "selected_indices": [
+        0,
+        1,
         2,
+        3,
+        4,
         5,
+        6,
         7,
+        8,
         9,
         10,
         11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
         26,
-        28
+        27,
+        28,
+        29
       ],
-      "repetitions": 16
+      "repetitions": 16,
+      "selection_method": "all_rows"
     }
   },
-  "aime_full_extension": {
-    "selected_indices": [
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13,
-      14,
-      15,
-      16,
-      17,
-      18,
-      19,
-      20,
-      21,
-      22,
-      23,
-      24,
-      25,
-      26,
-      27,
-      28,
-      29
-    ],
-    "repetitions": 16,
-    "original_subset_reused": true
-  },
   "notes": [
-    "The selection seed is not the same as the per-generation sampling seed.",
-    "AIME's original subset contains eight questions, each repeated 16 times per inference mode; the full extension contains all 30 questions, each repeated 16 times per mode.",
-    "These indices refer to the order of the JSON list in the exact tracked source files; they are not problem numbers printed in AIME statements."
+    "Use the selected_indices in this file as the source of truth; all indices are zero-based row offsets into the exact tracked JSON datasets.",
+    "All 30 AIME questions are included, with 16 independently seeded generations per question per inference mode; no AIME subset is defined for future evaluation.",
+    "Seed 42 controls GSM8K/MATH500 question selection; AIME uses the whole dataset. Question selection and generation seed are different concepts.",
+    "For compatibility with previous runs, individual response seeds use 42+OFFSETS[name]+index*32+repeat, with offsets gsm8k=0, math=200000, aime=400000.",
+    "An earlier completed 25% baseline is a historical run, not the canonical dataset split for future experiments."
   ]
 }
