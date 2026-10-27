@@ -185,3 +185,29 @@ cat outputs/baseline_subset_25pct_seed42/summary.json
 ```
 
 Final results are `summary.json` and per-mode grade JSON files. Note: 981 tok/s was measured at fixed 2,048-token outputs, not full 16K; an actual 16K run could slow down, fail or require re-submission. This is a **25% subset adaptation**, not exact full-paper reproduction.
+
+## AIME 2024 full-30 extension (after subset Job 70028)
+
+Keep the original 330 GSM8K and 125 MATH-500 questions/mode unchanged. The original subset already generated 8 AIME questions x 16 draws x 2 modes (256 responses). The extension generates only the remaining 22 questions x 16 draws x 2 modes = **704 new responses**, then reuses all 256 original AIME responses for scoring across the 30-question AIME set.
+
+```bash
+cd /tc1home/UG/n2602710a/AdaptThink
+git pull --ff-only origin main
+source .venv/bin/activate
+python scripts/extend_aime_full.py --action preflight
+# Only if AIME_EXPANSION_PREFLIGHT_OK appears:
+sbatch scripts/ntu_aime_full.sbatch
+```
+
+The new generator imports existing `eval_baseline_subset.py`, preserving the same model, seed per question/repeat, chat template, forced NoThinking token, scoring and vLLM settings. The preflight checks old manifest and saved outputs; it refuses missing/incompatible sources.
+
+New JSONL and summaries are saved in `outputs/baseline_aime_remaining_seed42/`. Each mode saves progress every 32 generations and can be resumed by resubmitting the same SBATCH after interruption/time limit. The original `outputs/baseline_subset_25pct_seed42/` is not modified. Final `summary_combined.json` contains GSM8K/MATH subset scores plus 30x16 full-AIME scores. This is a mixed-scope subset/full-AIME experiment, **not** an all-three-datasets full run.
+
+```bash
+sacct -j JOBID --format=JobID,State,Elapsed,ExitCode
+grep -E 'AIME_EXPANSION_PREFLIGHT_OK|MODE_START|BATCH_DONE|MODE_DONE|FULL_AIME_SCORE|FINAL_SUMMARY' aime30_extend_JOBID.out
+tail -n 25 aime30_extend_JOBID.err
+cat outputs/baseline_aime_remaining_seed42/summary_combined.json
+```
+
+Closing SSH does not stop an accepted SLURM job. Re-submit after job time limit if needed. Full AIME may still require error analysis for large discrepancies, especially response truncation and scoring mismatches.
