@@ -19,3 +19,6 @@ __pycache__/
 /gpu_probe_*.err
 /vllm_concurrency_*.out
 /vllm_concurrency_*.err
+
+/baseline_1p5b_*.out
+/baseline_1p5b_*.err
