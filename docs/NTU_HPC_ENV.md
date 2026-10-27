@@ -152,3 +152,36 @@ Results are written locally to `outputs/benchmarks/vllm_concurrency/seqs{4,8,16}
 | **16** | **65,536** | **66.777** | **981.411** | **Success** |
 
 **Recommended among tested settings:** `max_num_seqs=16`. This is a controlled fixed-length throughput benchmark, **not** proof that 16 simultaneous 16K sequences will fit or have the same speed. For true evaluation disable `ignore_eos`, keep paper decoding/stopping behavior, save outputs/seed/lengths, and benchmark at least one representative long-thinking workload before assigning a full-run runtime.
+
+## Submit original 1.5B baselines, 25% subset
+
+**Protocol:** pretrained DeepSeek-R1-Distill-Qwen-1.5B, 330 GSM8K + 125 MATH-500 + 8 AIME questions (16 draws per AIME question), seed 42; **1,166 outputs total**. Thinking uses default model chat template; NoThinking appends the original project EOT token ID 151649 (`</think>`) to the prompt. Sampling uses temperature 0.6, top-p 0.95, top-k -1, 16,384 max response tokens (including forced prefix) and natural EOS. The original `src/adapt_think_rm.py` mathematical scorer is reused.
+
+First run on SSH login node (CPU-only):
+
+```bash
+cd /tc1home/UG/n2602710a/AdaptThink
+git pull --ff-only origin main
+source .venv/bin/activate
+python -m pip install 'math-verify==0.9.0'
+python -m pip check
+python scripts/eval_baseline_subset.py --action preflight
+```
+
+Only after `PREFLIGHT_OK`, submit the GPU task:
+
+```bash
+sbatch scripts/ntu_baseline_subset.sbatch
+```
+
+After submission, closing SSH **does not stop Slurm**. The job ends on normal completion, time limit (5:45), failure or cancellation. A fresh submission of the same SBATCH skips saved completed task IDs. Every 32 outputs it fsyncs into `outputs/baseline_subset_25pct_seed42/{nothinking,thinking}.jsonl`. The manifest checks the dataset, sample IDs and configuration to avoid mixing different experiments.
+
+```bash
+squeue -u n2602710a
+sacct -j JOBID --format=JobID,State,Elapsed,ExitCode
+grep -E 'PREFLIGHT_OK|MODE_START|BATCH_DONE|MODE_DONE|SCORE' baseline_1p5b_JOBID.out
+tail -n 30 baseline_1p5b_JOBID.err
+cat outputs/baseline_subset_25pct_seed42/summary.json
+```
+
+Final results are `summary.json` and per-mode grade JSON files. Note: 981 tok/s was measured at fixed 2,048-token outputs, not full 16K; an actual 16K run could slow down, fail or require re-submission. This is a **25% subset adaptation**, not exact full-paper reproduction.
