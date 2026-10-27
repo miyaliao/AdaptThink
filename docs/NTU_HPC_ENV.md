@@ -139,3 +139,16 @@ grep -E 'BENCH_RESULT|CONFIG_STATUS|SUMMARY|max_num_seqs=' vllm_concurrency_JOBI
 The single Slurm job tests **4, 8 and 16** sequentially, rebuilding the engine between settings. All three use the **same 32 MATH-500 questions**, selected with seed 42, 17,408 max context, FP16, XFormers, 0.80 GPU utilization, **chunked prefill OFF**. For an apples-to-apples *speed-only* comparison, each question generates exactly **2,048 tokens** using `ignore_eos=True` (32 × 2,048 = 65,536 output tokens per configuration); this is **not** how baseline evaluation will generate/stop or grade responses. It is intentionally synthetic fixed-work benchmarking. See the vLLM 0.8.5 SamplingParams documentation for `ignore_eos` and per-prompt `seed`.
 
 Results are written locally to `outputs/benchmarks/vllm_concurrency/seqs{4,8,16}_n32_tok2048_seed42.json`; Slurm logs remain locally as `vllm_concurrency_<JOBID>.out/.err`. These outputs are ignored by Git. Inspect the summary to select the fastest **successful** configuration. Do not claim an optimal full-16K setting until a representative 16K generation benchmark has also run.
+
+### Results: job 70005 (fixed workload, 2026-10-27)
+
+- Slurm: `COMPLETED`, exit `0:0`, 9 min 31 sec total including three engine initializations.
+- 32 seeded MATH-500 prompts, 2,048 tokens per prompt, `ignore_eos=True`, **65,536 generated tokens per configuration**.
+
+| `max_num_seqs` | Output tokens | Generation seconds | Aggregate tokens/s | Status |
+| ---: | ---: | ---: | ---: | --- |
+| 4 | 65,536 | 235.353 | 278.458 | Success |
+| 8 | 65,536 | 143.512 | 456.659 | Success |
+| **16** | **65,536** | **66.777** | **981.411** | **Success** |
+
+**Recommended among tested settings:** `max_num_seqs=16`. This is a controlled fixed-length throughput benchmark, **not** proof that 16 simultaneous 16K sequences will fit or have the same speed. For true evaluation disable `ignore_eos`, keep paper decoding/stopping behavior, save outputs/seed/lengths, and benchmark at least one representative long-thinking workload before assigning a full-run runtime.
