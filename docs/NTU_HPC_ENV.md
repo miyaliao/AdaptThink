@@ -2,6 +2,12 @@
 
 Validated on **2026-10-27**. Scope: DeepSeek-R1-Distill-Qwen-1.5B baseline evaluation on NTU TC1; this is **not** the RL training environment.
 
+## Canonical test split for all future experiments
+
+Use `data/splits/adaptthink_original_baseline_seed42.json` as the **single source of truth**: GSM8K **330/1319**, MATH-500 **125/500**, and AIME 2024 **all 30/30**, with **16 generations per AIME question per mode**. There are **935 generations per mode, 1,870 across Thinking + NoThinking**. Verify locally with `python scripts/verify_baseline_split.py` (CPU only). GSM8K/MATH indices are seed-42 fixed; **AIME is not sampled**. The earlier eight-question AIME subset exists only as a historical run, not a future split.
+
+**Do not use `scripts/eval_baseline_subset.py` alone to define future AIME selection**: that script was intentionally preserved unchanged because `scripts/extend_aime_full.py` depends on its earlier run and saved manifest. Future evaluations should read the canonical split file or use the completed full-AIME combined results from `outputs/baseline_aime_remaining_seed42/summary_combined.json` when available.
+
 ## Paths and activation
 
 - Repository: `/tc1home/UG/n2602710a/AdaptThink`
@@ -108,11 +114,11 @@ Model load time was ~25–32 s. These are **different workloads**; do not interp
 
 Existing local scripts/logs (may be untracked): `smoke_gpu.sbatch`, `smoke_69968.*`, `vllm_smoke.sbatch`, `vllm_smoke_69980.*`, `vllm_long_context.sbatch`, `vllm_long_69983.*`, `vllm_long_fix.sbatch`, `vllm_fix_69987.*`, `vllm_benchmark.sbatch`, `vllm_benchmark_69992.*`. GitHub does **not** automatically contain local Slurm logs.
 
-## Baseline evaluation next
+## Original project datasets and historical subset experiment
 
 Reuse repository datasets `data/test/gsm8k.json` (**1,319**), `data/test/math.json` (**500**), `data/test/aime.json` (**30**). Full evaluation: AIME repeated 16 times -> **2,299 generations/mode**, **4,598 total** across Thinking / NoThinking.
 
-Proposed quick experiment: deterministic seed **42**, per-dataset 25% sampling: **330 GSM8K + 125 MATH-500 + 8 AIME** independent questions (round half-up for AIME). Keep the same sampled question IDs in both modes and retain 16 generations/AIME question (128 AIME outputs per mode) -> **1,166 outputs total**. Document exact sample IDs for reproducibility. This is a **subset study**, not a full published baseline.
+Historical initial quick experiment (superseded by the canonical split above): deterministic seed **42**, per-dataset 25% sampling: **330 GSM8K + 125 MATH-500 + 8 AIME** independent questions (round half-up for AIME). Keep the same sampled question IDs in both modes and retain 16 generations/AIME question (128 AIME outputs per mode) -> **1,166 outputs total**. Document exact sample IDs for reproducibility. This is a **subset study**, not a full published baseline.
 
 Use the official scoring logic in `src/adapt_think_rm.py`, including the Thinking/NoThinking output convention and boxed-answer extraction. Beware: original `scripts/run_eval_hf.sh` also evaluates 7B and MMLU, assumes 8 GPUs, and uses author-specific paths; adapt it rather than running as-is. Persist generations incrementally, with resumable Slurm shards below the 6-hour limit.
 
@@ -153,7 +159,7 @@ Results are written locally to `outputs/benchmarks/vllm_concurrency/seqs{4,8,16}
 
 **Recommended among tested settings:** `max_num_seqs=16`. This is a controlled fixed-length throughput benchmark, **not** proof that 16 simultaneous 16K sequences will fit or have the same speed. For true evaluation disable `ignore_eos`, keep paper decoding/stopping behavior, save outputs/seed/lengths, and benchmark at least one representative long-thinking workload before assigning a full-run runtime.
 
-## Submit original 1.5B baselines, 25% subset
+## Historical original 1.5B baselines, 25% subset (not the future AIME split)
 
 **Protocol:** pretrained DeepSeek-R1-Distill-Qwen-1.5B, 330 GSM8K + 125 MATH-500 + 8 AIME questions (16 draws per AIME question), seed 42; **1,166 outputs total**. Thinking uses default model chat template; NoThinking appends the original project EOT token ID 151649 (`</think>`) to the prompt. Sampling uses temperature 0.6, top-p 0.95, top-k -1, 16,384 max response tokens (including forced prefix) and natural EOS. The original `src/adapt_think_rm.py` mathematical scorer is reused.
 
