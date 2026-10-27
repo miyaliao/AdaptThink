@@ -43,7 +43,7 @@ The NTU module system showed **available CUDA toolkit modules**:
 - anaconda, miniconda, python/3.10, python/3.11 and other Python versions.
 - slurm/slurm/23.02.8.
 
-These are **available modules**, not proof of which CUDA toolkit has been loaded, which NVIDIA driver is installed, or which GPU has been allocated. The exact GPU type, VRAM, PyTorch CUDA build and working vLLM/FlashAttention stack are **to verify**.
+These are **available modules**, not proof of which CUDA toolkit has been loaded, which NVIDIA driver is installed, or which GPU has been allocated. The TC1 User Guide identifies its cards as **NVIDIA Tesla V100 32GB (Volta/SM70)**; verify the actual allocated GPU with nvidia-smi in a Slurm job. The previous MyTCinfo output gave the assigned normal QoS limits: **1 GPU, 20 CPUs, 64 GB host RAM, 2 submitted jobs, and 6 hours maximum wall time per job**. These limits may change by semester, so recheck MyTCinfo before submission. On V100 use float16 (not bfloat16), and do not assume FlashAttention-2 works; vLLM 0.8.2 supports SM70 with a suitable backend.
 
 Check loaded modules with:
 
@@ -114,7 +114,7 @@ squeue -u n2602710a
 # Then inspect gpu_probe_<JOBID>.out and gpu_probe_<JOBID>.err
 ~~~
 
-Only record a concrete GPU model/VRAM/driver after examining the GPU job output. A login-node test alone is not sufficient.
+The guide says the cluster uses V100 32GB; confirm the allocated GPU and driver with the job output. A login-node test is not sufficient.
 
 ## 4. Base model and AdaptThink-specific compatibility
 
@@ -158,3 +158,17 @@ Submit code/doc changes from HPC with git add, git commit, and git push to origi
 3. Installed PyTorch, vLLM, transformers and FlashAttention versions.
 4. Loaded CUDA toolkit and compatibility with the PyTorch CUDA runtime.
 5. Model directory integrity and tokenizer template.
+
+## 7. Evaluation baseline: scope and runtime planning
+
+- Model: local DeepSeek-R1-Distill-Qwen-1.5B (before AdaptThink RL).
+- Original Thinking: ordinary model thinking prefix/template.
+- Original NoThinking: force the first generated token to be </think> (empty thinking segment), as defined in the paper.
+- Evaluation data already present in this repo: GSM8K 1,319; MATH500 500; AIME2024 30 questions each sampled 16 times (480 generations).
+- Thus 2,299 outputs per mode; 4,598 outputs for both modes. Use 16K context/output budget and temperature 0.6 per paper, with exact tokenizer/sampling checks before claiming numerical replication.
+- Use the original src/adapt_think_rm.py checker; its imports include math_verify, sympy, and pylatexenc, which must be verified in the active environment.
+- Do not run the upstream scripts/run_eval_hf.sh unchanged: it evaluates 7B and MMLU too, assumes 8 GPUs, and has absolute paths.
+- Expected generated tokens estimated from paper mean lengths: Thinking 9.53M; NoThinking 1.75M; combined ~11.28M (input tokens/runtime setup excluded).
+- At hypothetical sustained 100/200/400 generated tokens/s, generation takes about 31.3/15.7/7.8 h respectively, before overhead. Actual throughput must be measured on the V100.
+- A six-hour per-job limit requires resumable batches unless measured aggregate throughput is unusually high.
+- Recommended first experiment: GPU/Conda probe; 3–5 GSM8K cases per mode; a few MATH500; one longer AIME; save outputs and time by dataset/mode.
