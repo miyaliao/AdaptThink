@@ -13,15 +13,5 @@ __pycache__/
 /wandb/
 
 # Slurm logs
-/gpu_check_*.out
-/gpu_check_*.err
-/gpu_probe_*.out
-/gpu_probe_*.err
-/vllm_concurrency_*.out
-/vllm_concurrency_*.err
-
-/baseline_1p5b_*.out
-/baseline_1p5b_*.err
-
-/aime30_extend_*.out
-/aime30_extend_*.err
+*.out
+*.err

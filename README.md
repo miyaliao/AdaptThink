@@ -8,7 +8,7 @@ For **NTU SC4001 Project G**, we study whether selecting **Thinking** or **NoThi
 
 **Maximize accuracy, subject to mean LLM output tokens ≤ B.**
 
-Our planned comparison uses **Qwen3-1.7B** with the same evaluation protocol:
+Our planned comparison uses **DeepSeek-R1-Distill-Qwen-1.5B** with the same evaluation protocol:
 
 - **Baselines:** Always Fast, Always Slow, and budget-matched Random Router.
 - **External Router:** A lightweight predictor chooses the mode; Qwen remains frozen.
