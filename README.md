@@ -18,7 +18,7 @@ These router experiments are **planned**, not implemented in this fork yet. Rout
 
 ## Current Work: AdaptThink Baseline Evaluation
 
-We currently evaluate **DeepSeek-R1-Distill-Qwen-1.5B** in forced NoThinking and regular Thinking modes, reusing the original mathematical scorer. This is a **subset/full-AIME inference baseline**, **not** a reproduction of AdaptThink's RL training or a direct baseline for the separate Qwen3-1.7B comparison.
+We evaluate **DeepSeek-R1-Distill-Qwen-1.5B** in forced NoThinking and regular Thinking modes using the original mathematical scorer. This is a **subset/full-AIME inference baseline**, not a reproduction of AdaptThink's RL training.
 
 | Dataset | Fixed questions | Generations per mode |
 | --- | ---: | ---: |
@@ -30,6 +30,16 @@ We currently evaluate **DeepSeek-R1-Distill-Qwen-1.5B** in forced NoThinking and
 Both modes together require **1,870 generations**. The canonical question indices, dataset hashes, and sampling seeds are recorded in [`data/splits/adaptthink_original_baseline_seed42.json`](data/splits/adaptthink_original_baseline_seed42.json) (base seed 42). Both modes use the same questions; mathematical scoring uses [`src/adapt_think_rm.py`](src/adapt_think_rm.py).
 
 **Important:** `eval_baseline_subset.py` contains the historical **8-question AIME** run. `extend_aime_full.py` adds the other 22 questions and combines all **30**; the canonical split above, not the historical 8-question manifest, defines future evaluation.
+
+## Baseline Results
+
+| Dataset | NoThinking Accuracy | Thinking Accuracy | Mean Output Tokens (NoThinking / Thinking) |
+| --- | ---: | ---: | ---: |
+| GSM8K | 66.06% | 77.88% | 269 / 924 |
+| MATH-500 | 67.20% | 84.80% | 856 / 3,964 |
+| AIME 2024 | 10.83% | 25.00% | 6,013 / 12,489 |
+
+Results use the original **1.5B model weights** (no SFT/RL). AIME accuracy is averaged over **30 questions × 16 generations per mode**, **not pass@16**. At the 16,384-token limit, AIME truncation rates were **17.1% (NoThinking)** and **47.7% (Thinking)**.
 
 ## Quick Start (NTU TC1)
 
@@ -46,7 +56,7 @@ python scripts/extend_aime_full.py --action preflight
 sbatch scripts/ntu_aime_full.sbatch
 ```
 
-Results are saved locally (Git-ignored) under `outputs/baseline_subset_25pct_seed42/` and `outputs/baseline_aime_remaining_seed42/`. The combined summary, when the AIME extension completes, is `outputs/baseline_aime_remaining_seed42/summary_combined.json`.
+Results are saved locally (Git-ignored) under `outputs/baseline_subset_25pct_seed42/` and `outputs/baseline_aime_remaining_seed42/`. The combined AIME-30 summary is `outputs/baseline_aime_remaining_seed42/summary_combined.json`.
 
 ## Original Work & Attribution
 
