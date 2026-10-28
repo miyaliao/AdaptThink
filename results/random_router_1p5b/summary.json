@@ -1,0 +1,520 @@
+{
+  "description": "Offline Random Router, one decision per original question (16 AIME generations grouped)",
+  "seed_start": 42,
+  "n_seeds": 100,
+  "p_nothinking_values": [
+    0.1,
+    0.25,
+    0.5
+  ],
+  "random_rule": "independent uniform draw per question and seed; NoThinking if u < p",
+  "common_uniforms_across_probabilities": true,
+  "input_sha256": {
+    "thinking_grades": "f155e27b37238789bc1c9b6e5dfe17d263e23bc9cbe63eb173165c7d028a3348",
+    "nothinking_grades": "39df177ead3f1ee056ef5de96d85844a8e5d61dd6d6bbf2088f855061150fa50",
+    "canonical_split": "831f35187368d5345c97bf348f4b71439a2657e4ed0e1e875d0557c0ffa91fd1"
+  },
+  "datasets": {
+    "gsm8k": {
+      "n_questions": 330,
+      "generations_per_question": 1,
+      "baselines": {
+        "always_thinking": {
+          "accuracy": 0.7787878787878788,
+          "mean_output_tokens": 923.7757575757576,
+          "truncation_fraction": 0.0030303030303030303,
+          "nothinking_fraction": 0.0
+        },
+        "always_nothinking": {
+          "accuracy": 0.6606060606060606,
+          "mean_output_tokens": 269.1939393939394,
+          "truncation_fraction": 0.0,
+          "nothinking_fraction": 1.0
+        }
+      },
+      "random": {
+        "p10": {
+          "p_nothinking": 0.1,
+          "theoretical_expectation": {
+            "accuracy": 0.766969696969697,
+            "mean_output_tokens": 858.3175757575758,
+            "truncation_fraction": 0.0027272727272727275,
+            "nothinking_fraction": 0.1,
+            "token_savings_vs_thinking": 0.0708593847385236,
+            "accuracy_drop_pp_vs_thinking": 1.1818181818181839
+          },
+          "monte_carlo": {
+            "accuracy": {
+              "mean": 0.7659090909090909,
+              "std": 0.00884133493956405,
+              "p025": 0.7484848484848485,
+              "p975": 0.7834090909090909
+            },
+            "mean_output_tokens": {
+              "mean": 859.6539393939394,
+              "std": 24.91792604291041,
+              "p025": 798.9734848484848,
+              "p975": 898.0583333333334
+            },
+            "truncation_fraction": {
+              "mean": 0.002818181818181818,
+              "std": 0.0007770678787158873,
+              "p025": 0.0,
+              "p975": 0.0030303030303030303
+            },
+            "nothinking_fraction": {
+              "mean": 0.10036363636363636,
+              "std": 0.01583859935012014,
+              "p025": 0.07098484848484848,
+              "p975": 0.13204545454545447
+            },
+            "token_savings_vs_thinking": {
+              "mean": 0.06941275266856049,
+              "std": 0.02697399865558491,
+              "p025": 0.02783946648471681,
+              "p975": 0.1351001817311036
+            },
+            "accuracy_drop_pp_vs_thinking": {
+              "mean": 1.2878787878787896,
+              "std": 0.8841334939564051,
+              "p025": -0.46212121212120927,
+              "p975": 3.0303030303030276
+            }
+          }
+        },
+        "p25": {
+          "p_nothinking": 0.25,
+          "theoretical_expectation": {
+            "accuracy": 0.7492424242424243,
+            "mean_output_tokens": 760.130303030303,
+            "truncation_fraction": 0.0022727272727272726,
+            "nothinking_fraction": 0.25,
+            "token_savings_vs_thinking": 0.17714846184630928,
+            "accuracy_drop_pp_vs_thinking": 2.954545454545454
+          },
+          "monte_carlo": {
+            "accuracy": {
+              "mean": 0.7485757575757576,
+              "std": 0.012523586192069093,
+              "p025": 0.7242424242424242,
+              "p975": 0.7682575757575758
+            },
+            "mean_output_tokens": {
+              "mean": 766.0368787878788,
+              "std": 35.011910513636344,
+              "p025": 690.6598484848485,
+              "p975": 823.5886363636364
+            },
+            "truncation_fraction": {
+              "mean": 0.0024545454545454545,
+              "std": 0.001194779528495947,
+              "p025": 0.0,
+              "p975": 0.0030303030303030303
+            },
+            "nothinking_fraction": {
+              "mean": 0.2535151515151515,
+              "std": 0.021609466621953007,
+              "p025": 0.21212121212121213,
+              "p975": 0.2909090909090909
+            },
+            "token_savings_vs_thinking": {
+              "mean": 0.17075451211431344,
+              "std": 0.03790087608005352,
+              "p025": 0.10845394067824411,
+              "p975": 0.2523511871567937
+            },
+            "accuracy_drop_pp_vs_thinking": {
+              "mean": 3.021212121212123,
+              "std": 1.2523586192069094,
+              "p025": 1.0530303030303045,
+              "p975": 5.454545454545457
+            }
+          }
+        },
+        "p50": {
+          "p_nothinking": 0.5,
+          "theoretical_expectation": {
+            "accuracy": 0.7196969696969697,
+            "mean_output_tokens": 596.4848484848485,
+            "truncation_fraction": 0.0015151515151515152,
+            "nothinking_fraction": 0.5,
+            "token_savings_vs_thinking": 0.35429692369261856,
+            "accuracy_drop_pp_vs_thinking": 5.909090909090908
+          },
+          "monte_carlo": {
+            "accuracy": {
+              "mean": 0.7189696969696969,
+              "std": 0.014520818847440572,
+              "p025": 0.6923484848484849,
+              "p975": 0.7424242424242424
+            },
+            "mean_output_tokens": {
+              "mean": 600.527393939394,
+              "std": 40.35087206042476,
+              "p025": 523.5600757575758,
+              "p975": 671.822196969697
+            },
+            "truncation_fraction": {
+              "mean": 0.0016363636363636363,
+              "std": 0.0015179038362485853,
+              "p025": 0.0,
+              "p975": 0.0030303030303030303
+            },
+            "nothinking_fraction": {
+              "mean": 0.5002424242424243,
+              "std": 0.022748913276332612,
+              "p025": 0.4590151515151515,
+              "p975": 0.5424242424242425
+            },
+            "token_savings_vs_thinking": {
+              "mean": 0.3499208124758074,
+              "std": 0.043680375599286766,
+              "p025": 0.272743204765685,
+              "p975": 0.4332389960832682
+            },
+            "accuracy_drop_pp_vs_thinking": {
+              "mean": 5.981818181818184,
+              "std": 1.4520818847440573,
+              "p025": 3.6363636363636376,
+              "p975": 8.643939393939391
+            }
+          }
+        }
+      }
+    },
+    "math": {
+      "n_questions": 125,
+      "generations_per_question": 1,
+      "baselines": {
+        "always_thinking": {
+          "accuracy": 0.848,
+          "mean_output_tokens": 3964.384,
+          "truncation_fraction": 0.04,
+          "nothinking_fraction": 0.0
+        },
+        "always_nothinking": {
+          "accuracy": 0.672,
+          "mean_output_tokens": 855.856,
+          "truncation_fraction": 0.008,
+          "nothinking_fraction": 1.0
+        }
+      },
+      "random": {
+        "p10": {
+          "p_nothinking": 0.1,
+          "theoretical_expectation": {
+            "accuracy": 0.8304,
+            "mean_output_tokens": 3653.5312,
+            "truncation_fraction": 0.0368,
+            "nothinking_fraction": 0.1,
+            "token_savings_vs_thinking": 0.07841137488194894,
+            "accuracy_drop_pp_vs_thinking": 1.759999999999995
+          },
+          "monte_carlo": {
+            "accuracy": {
+              "mean": 0.82736,
+              "std": 0.014789786265452836,
+              "p025": 0.8,
+              "p975": 0.856
+            },
+            "mean_output_tokens": {
+              "mean": 3631.49904,
+              "std": 134.81505540134256,
+              "p025": 3376.5864,
+              "p975": 3878.7378
+            },
+            "truncation_fraction": {
+              "mean": 0.03624,
+              "std": 0.007051212375159038,
+              "p025": 0.024,
+              "p975": 0.048
+            },
+            "nothinking_fraction": {
+              "mean": 0.10504,
+              "std": 0.02701960380721727,
+              "p025": 0.056,
+              "p975": 0.16
+            },
+            "token_savings_vs_thinking": {
+              "mean": 0.08396889907738504,
+              "std": 0.034006558244948665,
+              "p025": 0.021603911225552358,
+              "p975": 0.14826959245118526
+            },
+            "accuracy_drop_pp_vs_thinking": {
+              "mean": 2.0640000000000005,
+              "std": 1.4789786265452838,
+              "p025": -0.8000000000000007,
+              "p975": 4.799999999999994
+            }
+          }
+        },
+        "p25": {
+          "p_nothinking": 0.25,
+          "theoretical_expectation": {
+            "accuracy": 0.804,
+            "mean_output_tokens": 3187.252,
+            "truncation_fraction": 0.032,
+            "nothinking_fraction": 0.25,
+            "token_savings_vs_thinking": 0.19602843720487217,
+            "accuracy_drop_pp_vs_thinking": 4.399999999999993
+          },
+          "monte_carlo": {
+            "accuracy": {
+              "mean": 0.8004,
+              "std": 0.018696945140202897,
+              "p025": 0.76,
+              "p975": 0.832
+            },
+            "mean_output_tokens": {
+              "mean": 3139.2544,
+              "std": 206.31106039593942,
+              "p025": 2754.575,
+              "p975": 3541.5119999999997
+            },
+            "truncation_fraction": {
+              "mean": 0.03152,
+              "std": 0.009012314807074717,
+              "p025": 0.016,
+              "p975": 0.048
+            },
+            "nothinking_fraction": {
+              "mean": 0.25504,
+              "std": 0.03771716111300322,
+              "p025": 0.18359999999999999,
+              "p975": 0.32419999999999993
+            },
+            "token_savings_vs_thinking": {
+              "mean": 0.20813563973621124,
+              "std": 0.05204113940424021,
+              "p025": 0.10666776982249956,
+              "p975": 0.3051694790413845
+            },
+            "accuracy_drop_pp_vs_thinking": {
+              "mean": 4.759999999999996,
+              "std": 1.86969451402029,
+              "p025": 1.6000000000000014,
+              "p975": 8.799999999999997
+            }
+          }
+        },
+        "p50": {
+          "p_nothinking": 0.5,
+          "theoretical_expectation": {
+            "accuracy": 0.76,
+            "mean_output_tokens": 2410.12,
+            "truncation_fraction": 0.024,
+            "nothinking_fraction": 0.5,
+            "token_savings_vs_thinking": 0.39205687440974435,
+            "accuracy_drop_pp_vs_thinking": 8.799999999999997
+          },
+          "monte_carlo": {
+            "accuracy": {
+              "mean": 0.75704,
+              "std": 0.02370607900556696,
+              "p025": 0.712,
+              "p975": 0.8042
+            },
+            "mean_output_tokens": {
+              "mean": 2355.37504,
+              "std": 233.07009650421315,
+              "p025": 1884.8382000000001,
+              "p975": 2782.9644
+            },
+            "truncation_fraction": {
+              "mean": 0.02344,
+              "std": 0.010375106181761625,
+              "p025": 0.0,
+              "p975": 0.04
+            },
+            "nothinking_fraction": {
+              "mean": 0.50496,
+              "std": 0.048752087756382914,
+              "p025": 0.41179999999999994,
+              "p975": 0.5962
+            },
+            "token_savings_vs_thinking": {
+              "mean": 0.4058660715006417,
+              "std": 0.058790999182776735,
+              "p025": 0.29800836649527396,
+              "p975": 0.5245571064760628
+            },
+            "accuracy_drop_pp_vs_thinking": {
+              "mean": 9.095999999999998,
+              "std": 2.370607900556696,
+              "p025": 4.379999999999994,
+              "p975": 13.600000000000001
+            }
+          }
+        }
+      }
+    },
+    "aime": {
+      "n_questions": 30,
+      "generations_per_question": 16,
+      "baselines": {
+        "always_thinking": {
+          "accuracy": 0.25,
+          "mean_output_tokens": 12488.585416666667,
+          "truncation_fraction": 0.47708333333333336,
+          "nothinking_fraction": 0.0
+        },
+        "always_nothinking": {
+          "accuracy": 0.10833333333333334,
+          "mean_output_tokens": 6012.970833333334,
+          "truncation_fraction": 0.17083333333333334,
+          "nothinking_fraction": 1.0
+        }
+      },
+      "random": {
+        "p10": {
+          "p_nothinking": 0.1,
+          "theoretical_expectation": {
+            "accuracy": 0.23583333333333334,
+            "mean_output_tokens": 11841.023958333333,
+            "truncation_fraction": 0.44645833333333335,
+            "nothinking_fraction": 0.1,
+            "token_savings_vs_thinking": 0.051852266427959814,
+            "accuracy_drop_pp_vs_thinking": 1.416666666666666
+          },
+          "monte_carlo": {
+            "accuracy": {
+              "mean": 0.23735416666666667,
+              "std": 0.012252942195746325,
+              "p025": 0.20416666666666666,
+              "p975": 0.25
+            },
+            "mean_output_tokens": {
+              "mean": 11775.913979166668,
+              "std": 433.02336542679745,
+              "p025": 10768.257760416665,
+              "p975": 12488.585416666667
+            },
+            "truncation_fraction": {
+              "mean": 0.44347916666666665,
+              "std": 0.021799271677075682,
+              "p025": 0.39572916666666663,
+              "p975": 0.4770833333333334
+            },
+            "nothinking_fraction": {
+              "mean": 0.10466666666666667,
+              "std": 0.05360620430782063,
+              "p025": 0.015833333333333335,
+              "p975": 0.23333333333333334
+            },
+            "token_savings_vs_thinking": {
+              "mean": 0.057065825609752645,
+              "std": 0.034673531947734065,
+              "p025": 0.0,
+              "p975": 0.13775200303744028
+            },
+            "accuracy_drop_pp_vs_thinking": {
+              "mean": 1.2645833333333334,
+              "std": 1.2252942195746326,
+              "p025": 0.0,
+              "p975": 4.583333333333334
+            }
+          }
+        },
+        "p25": {
+          "p_nothinking": 0.25,
+          "theoretical_expectation": {
+            "accuracy": 0.21458333333333332,
+            "mean_output_tokens": 10869.681770833333,
+            "truncation_fraction": 0.4005208333333333,
+            "nothinking_fraction": 0.25,
+            "token_savings_vs_thinking": 0.1296306660698996,
+            "accuracy_drop_pp_vs_thinking": 3.541666666666668
+          },
+          "monte_carlo": {
+            "accuracy": {
+              "mean": 0.2163125,
+              "std": 0.018612842430401247,
+              "p025": 0.1769791666666667,
+              "p975": 0.2480208333333333
+            },
+            "mean_output_tokens": {
+              "mean": 10894.798354166667,
+              "std": 629.7241458420423,
+              "p025": 9652.152135416665,
+              "p975": 12032.626718750002
+            },
+            "truncation_fraction": {
+              "mean": 0.4025625,
+              "std": 0.03263130553425359,
+              "p025": 0.33958333333333335,
+              "p975": 0.4574479166666666
+            },
+            "nothinking_fraction": {
+              "mean": 0.24966666666666668,
+              "std": 0.07948981539772303,
+              "p025": 0.1,
+              "p975": 0.4
+            },
+            "token_savings_vs_thinking": {
+              "mean": 0.12761950287604298,
+              "std": 0.05042397716250895,
+              "p025": 0.036510035580824565,
+              "p975": 0.22712206279701083
+            },
+            "accuracy_drop_pp_vs_thinking": {
+              "mean": 3.36875,
+              "std": 1.8612842430401246,
+              "p025": 0.19791666666666732,
+              "p975": 7.30208333333333
+            }
+          }
+        },
+        "p50": {
+          "p_nothinking": 0.5,
+          "theoretical_expectation": {
+            "accuracy": 0.17916666666666667,
+            "mean_output_tokens": 9250.778125,
+            "truncation_fraction": 0.32395833333333335,
+            "nothinking_fraction": 0.5,
+            "token_savings_vs_thinking": 0.25926133213979896,
+            "accuracy_drop_pp_vs_thinking": 7.083333333333333
+          },
+          "monte_carlo": {
+            "accuracy": {
+              "mean": 0.180875,
+              "std": 0.023529977953963943,
+              "p025": 0.13213541666666667,
+              "p975": 0.21875
+            },
+            "mean_output_tokens": {
+              "mean": 9102.678375,
+              "std": 692.084295486803,
+              "p025": 7917.4405729166665,
+              "p975": 10379.27265625
+            },
+            "truncation_fraction": {
+              "mean": 0.31785416666666666,
+              "std": 0.03486995717576887,
+              "p025": 0.25197916666666664,
+              "p975": 0.38968749999999996
+            },
+            "nothinking_fraction": {
+              "mean": 0.5146666666666666,
+              "std": 0.0881688004553616,
+              "p025": 0.3333333333333333,
+              "p975": 0.6666666666666666
+            },
+            "token_savings_vs_thinking": {
+              "mean": 0.2711201412089473,
+              "std": 0.05541734891472821,
+              "p025": 0.16889925400211295,
+              "p975": 0.3660258300871746
+            },
+            "accuracy_drop_pp_vs_thinking": {
+              "mean": 6.9125,
+              "std": 2.3529977953963943,
+              "p025": 3.125,
+              "p975": 11.786458333333329
+            }
+          }
+        }
+      }
+    }
+  }
+}
