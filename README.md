@@ -10,11 +10,11 @@ For **NTU SC4001 Project G**, we study whether selecting **Thinking** or **NoThi
 
 Our planned comparison uses **DeepSeek-R1-Distill-Qwen-1.5B** with the same evaluation protocol:
 
-- **Baselines:** Always Fast, Always Slow, and budget-matched Random Router.
+- **Baselines:** Always Fast, Always Slow, and offline Random Router (implemented; budget-matched comparison planned).
 - **External Router:** A lightweight predictor chooses the mode; Qwen remains frozen.
 - **Internal Router:** LoRA SFT teaches Qwen to choose its mode (RL is optional).
 
-These router experiments are **planned**, not implemented in this fork yet. Router overhead will be reported separately from generated LLM tokens; budget thresholds will be chosen on validation data and evaluated on held-out test data.
+The **Random Router baseline is implemented** as an offline replay of the paired baseline grades. External and Internal Routers remain planned. Router overhead will be reported separately from generated LLM tokens; budget thresholds will be chosen on validation data and evaluated on held-out test data.
 
 ## Current Work: AdaptThink Baseline Evaluation
 
@@ -57,6 +57,45 @@ sbatch scripts/ntu_aime_full.sbatch
 ```
 
 Results are saved locally (Git-ignored) under `outputs/baseline_subset_25pct_seed42/` and `outputs/baseline_aime_remaining_seed42/`. The combined AIME-30 summary is `outputs/baseline_aime_remaining_seed42/summary_combined.json`.
+
+
+## Offline Random Router baseline (CPU only)
+
+The original model is **not** rerun. This script reads the paired grades already
+tracked under `results/baseline_1p5b/` and checks their IDs against the canonical
+split. It evaluates NoThinking probabilities **0.10, 0.25, 0.50** plus both
+always-on endpoints. AIME has **one route per question**, not one route per
+generation: all 16 draws of each question use the same selected mode.
+
+```bash
+cd ~/AdaptThink
+git pull --ff-only origin main
+source .venv/bin/activate
+# Only if matplotlib is not already installed (required for PNG only):
+python -m pip install matplotlib
+python scripts/eval_random_router.py
+```
+
+By default, each probability is replayed across 100 deterministic router seeds
+(starting at 42). The script reports per-dataset mean Accuracy, mean output
+tokens, fraction routed NoThinking, fraction truncated, and relative savings,
+and writes:
+
+- `results/random_router_1p5b/summary.json` — analytical random-mixture expectations,
+  100-seed simulation means, standard deviations, and seed percentiles;
+- `results/random_router_1p5b/per_seed.json` — all 900 dataset × probability × seed outcomes;
+- `results/random_router_1p5b/accuracy_tokens.png` — separate per-dataset
+  Accuracy–Token panels with the analytical random baseline line.
+
+To compute JSON outputs without matplotlib, use
+`python scripts/eval_random_router.py --skip-plot`.
+
+**Interpretation:** the 2.5%/97.5% quantiles and error bars represent variation
+across **router random seeds**, not confidence intervals for test-set sampling
+or AIME question difficulty. Use the analytical expectation line when comparing
+future learned routers at an equal token budget. The Random Router never uses
+gold answers or the graded outputs to decide its route; those cached values are
+used only to evaluate the chosen mode.
 
 ## Original Work & Attribution
 
