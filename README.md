@@ -16,6 +16,47 @@ Our planned comparison uses **DeepSeek-R1-Distill-Qwen-1.5B** with the same eval
 
 The **Random Router baseline is implemented** as an offline replay of the paired baseline grades. External and Internal Routers remain planned. Router overhead will be reported separately from generated LLM tokens; budget thresholds will be chosen on validation data and evaluated on held-out test data.
 
+## Shared splits (frozen — do not resample)
+
+Both routes (external router, internal router) must train and tune on the *same*
+data, otherwise the two Accuracy–Token curves are not comparable. Three frozen
+files, disjoint by construction:
+
+| File | Rows | Role | sha256 (first 12) |
+| --- | ---: | --- | --- |
+| `data/splits/sft_train_3000_seed42.json` | 3,000 | **training** (DeepScaleR, stratified) | `9c71b21f3272` |
+| `data/splits/adaptthink_val_seed142.json` | 450 | **validation** (GSM8K 300 + MATH-500 150) | `36883adfe2d4` |
+| `data/splits/adaptthink_original_baseline_seed42.json` | 485 | **test** (GSM8K 330 + MATH-500 125 + AIME 2024 30x16) | `831f35187368` |
+
+Rules:
+
+1. Never resample and never hand-edit these files. Regenerating changes the hash
+   and silently invalidates every result produced against the old one.
+2. Training data is never used to pick thresholds or checkpoints; that is the
+   validation split's only job. Test numbers are reported once, at the end.
+3. Both routes consume the same `sample_id`s and the same labels. Only the model
+   and the feature representation differ.
+4. Verify a copy with `shasum -a 256 data/splits/sft_train_3000_seed42.json`.
+
+The training manifest removes exact duplicates (3) and *near*-duplicates (27 at
+character 8-gram similarity >= 0.80) against all 935 held-out questions. The
+near-duplicate layer is not cosmetic: it recovered a genuine duplicate that exact
+text matching missed — `deepscaler:6417` and `math:489` are the same problem with
+the same answer 15, differing only in whether a comma sits inside `$...$`.
+
+```bash
+python scripts/make_val_split.py --force                 # regenerate validation (8 KB)
+python scripts/make_sft_manifest.py --n-total 3000 --pilot 600   # regenerate manifest (~76 s)
+python scripts/check_split_quality.py                    # must print PASS (worst 0.667)
+```
+
+`data/splits/sft_train_3000_seed42.json` holds, per problem: `sample_id`
+(traceable back to a `deepscaler.json` row), `problem`, `answer`, `acc_thinking`
+(the released K>=16 reference accuracy), `bucket`, `order_index` and the fixed
+`nothinking_seeds` used to sample it. Labels (`acc_nothinking`, `label`, `gain`)
+are joined on later by `scripts/build_router_labels.py` and stored separately in
+`data/sft/labels_3000.jsonl`; labels never change which problems are in the split.
+
 ## Current Work: AdaptThink Baseline Evaluation
 
 We evaluate **DeepSeek-R1-Distill-Qwen-1.5B** in forced NoThinking and regular Thinking modes using the original mathematical scorer. This is a **subset/full-AIME inference baseline**, not a reproduction of AdaptThink's RL training.
