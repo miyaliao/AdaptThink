@@ -1,0 +1,89 @@
+#!/bin/bash
+#PBS -P ds_ccds_wei.lu
+#PBS -q gpu_ded
+#PBS -l nodes=1:ppn=16:ngpus=2
+#PBS -l walltime=08:00:00
+#PBS -N nt_train
+#PBS -j oe
+
+# NoThinking label generation for the Internal Router (route B), lab H200 cluster.
+#
+# Resource request: 2 GPUs on one node - the per-user cap on this cluster. The
+# work is split into SHARDS independent processes (one GPU each) rather than one
+# tensor-parallel job: the requests are independent and short, so tensor
+# parallelism would only add communication overhead.
+#
+# Walltime: the pilot needs ~30-60 min on 2xH200; the full 12,000 generations
+# need ~3-4 h. 48 h is the cluster cap, 8 h leaves plenty of headroom.
+#
+# Submit (pilot, 600 problems x 4 generations = 2,400):
+#     qsub scripts/lab_nothinking_train.pbs
+# Submit (all 3,000 problems):
+#     qsub -v STAGE=all scripts/lab_nothinking_train.pbs
+# Single GPU only (if 2 are unavailable):
+#     qsub -v STAGE=pilot,SHARDS=1 scripts/lab_nothinking_train.pbs
+#
+# Resumable: every finished (sample_id, k) pair is skipped on re-submission.
+
+set -euo pipefail
+
+# ---- cluster-agnostic path/env setup -------------------------------------
+# Override REPO and ENV_ACTIVATE from the qsub command line if they differ:
+#     qsub -v REPO=/home/you/AdaptThink scripts/lab_nothinking_train.pbs
+REPO="${REPO:-$HOME/AdaptThink}"
+ENV_ACTIVATE="${ENV_ACTIVATE:-}"          # e.g. "$HOME/miniconda3/bin/activate nt"
+STAGE="${STAGE:-pilot}"                   # pilot | all
+SHARDS="${SHARDS:-2}"                     # 2 = one process per GPU
+DTYPE="${DTYPE:-bfloat16}"                # H100/H200
+MAX_SEQS="${MAX_SEQS:-32}"                # ample for a 1.5B model on 80/141 GB
+MAX_TOKENS="${MAX_TOKENS:-8192}"          # label cap, documented in docs/ROUTE_B_PLAN.md
+
+if [ "$SHARDS" -lt 1 ] 2>/dev/null; then
+  echo "SHARDS must be >= 1 (got: $SHARDS)"; exit 2
+fi
+
+cd "$REPO"
+if [ -n "$ENV_ACTIVATE" ]; then
+  # shellcheck disable=SC1090
+  source $ENV_ACTIVATE
+fi
+export PYTHONNOUSERSITE=1
+export TOKENIZERS_PARALLELISM=false
+export VLLM_ATTENTION_BACKEND=FLASH_ATTN   # Hopper: use FlashAttention, not XFormers
+unset VLLM_USE_V1 || true
+
+echo "PBS job: ${PBS_JOBID:-local}"
+echo "Node: $(hostname)"
+echo "Stage=$STAGE Shards=$SHARDS dtype=$DTYPE max_seqs=$MAX_SEQS max_tokens=$MAX_TOKENS"
+nvidia-smi --query-gpu=index,name,memory.total,driver_version --format=csv
+
+if [ "$STAGE" = "all" ]; then
+  STAGE_ARG=""
+else
+  STAGE_ARG="--pilot"
+fi
+
+# Preflight is CPU-only and cheap: fail before touching the model if the
+# tokenizer, the forced </think> token or prompt lengths are wrong.
+python -u scripts/gen_nothinking_train.py --preflight $STAGE_ARG \
+  --dtype "$DTYPE" --max-tokens "$MAX_TOKENS"
+
+# Launch SHARDS processes, one per GPU, in parallel.
+pids=()
+for ((i = 0; i < SHARDS; i++)); do
+  CUDA_VISIBLE_DEVICES=$i python -u scripts/gen_nothinking_train.py $STAGE_ARG \
+    --shard "$i" --shards "$SHARDS" \
+    --dtype "$DTYPE" --max-tokens "$MAX_TOKENS" --max-num-seqs "$MAX_SEQS" \
+    > "nt_train_shard${i}_${PBS_JOBID:-local}.log" 2>&1 &
+  pid=$!
+  pids+=("$pid")
+  echo "launched shard $i on GPU $i (pid $pid)"
+done
+
+status=0
+for pid in "${pids[@]}"; do
+  wait "$pid" || status=$?
+done
+echo "all shards finished, exit=$status"
+tail -n 3 nt_train_shard*_"${PBS_JOBID:-local}".log 2>/dev/null || true
+exit "$status"

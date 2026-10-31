@@ -76,9 +76,11 @@ def build_config(manifest, args):
         "nothinking_forced_first_response_token": EOS_THINK,
         "sampling": {"temperature": .6, "top_p": .95, "top_k": -1,
                      "ignore_eos": False, "max_response_tokens": args.max_tokens},
-        "gpu": {"dtype": "float16", "max_model_len": 1024 + args.max_tokens,
+        "gpu": {"dtype": args.dtype, "max_model_len": 1024 + args.max_tokens,
                 "max_num_seqs": args.max_num_seqs,
-                "gpu_memory_utilization": .80, "chunked_prefill": False},
+                "tensor_parallel_size": args.tensor_parallel_size,
+                "gpu_memory_utilization": args.gpu_memory_utilization,
+                "chunked_prefill": False, "enforce_eager": True},
         "k_nothinking": manifest["sampling"]["k_nothinking"],
         "max_tokens_note": ("Training-label deviation: 8192 rather than the 16384 used "
                             "for evaluation." if args.max_tokens != 16384 else "same as eval"),
@@ -142,6 +144,10 @@ def main():
     parser.add_argument("--manifest", type=Path, default=MANIFEST)
     parser.add_argument("--max-tokens", type=int, default=8192)
     parser.add_argument("--max-num-seqs", type=int, default=16)
+    parser.add_argument("--dtype", default="float16", choices=("float16", "bfloat16"),
+                        help="V100 needs float16; H100/H200 should use bfloat16")
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.80)
+    parser.add_argument("--tensor-parallel-size", type=int, default=1)
     parser.add_argument("--batch", type=int, default=32)
     parser.add_argument("--pilot", action="store_true",
                         help="Only the stratified pilot prefix of the manifest")
@@ -204,8 +210,10 @@ def main():
         print("NOTHINKING_TRAIN_DONE", path, flush=True)
         return
 
-    engine = LLM(model=str(MODEL), dtype="float16", tensor_parallel_size=1,
-                 gpu_memory_utilization=.80, max_model_len=1024 + args.max_tokens,
+    engine = LLM(model=str(MODEL), dtype=args.dtype,
+                 tensor_parallel_size=args.tensor_parallel_size,
+                 gpu_memory_utilization=args.gpu_memory_utilization,
+                 max_model_len=1024 + args.max_tokens,
                  max_num_seqs=args.max_num_seqs, enable_chunked_prefill=False,
                  enforce_eager=True)
     tkn = engine.get_tokenizer()

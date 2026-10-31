@@ -132,3 +132,26 @@ teammate's deliverable and lands on the same axes.
 3. AIME's 30 questions x 16 draws remain noisy and 47.7% of Thinking generations
    truncate at 16,384: report AIME with explicit error bars and truncation rates,
    never as the headline claim.
+
+## 9. Compute environments
+
+Two clusters are available and they are **not interchangeable for the final numbers**.
+
+| | NTU TC1 (V100-32GB) | Lab cluster (H200) |
+| --- | --- | --- |
+| Scheduler | Slurm (`sbatch`) | PBS (`qsub`), `-P ds_ccds_wei.lu -q gpu_ded` |
+| Concurrency cap | 1 GPU | 2 GPUs per user, 48 h per job |
+| Precision | fp16 only (no bf16, no FlashAttention-2) | bf16 + FlashAttention |
+| Launcher | `scripts/ntu_nothinking_train.sbatch` | `scripts/lab_nothinking_train.pbs` |
+
+Rule: **labels and the final test-set evaluation should be produced in the same
+environment.** The router label only needs a correctness estimate, so generating
+it on H200 is fine, but the reported accuracy must not mix a bf16-generated
+NoThinking set with an fp16-evaluated one. Deciding now: if the lab cluster is
+available, run both the label generation and the final evaluation there, and use
+TC1 only as the fallback.
+
+The PBS script splits the work into `SHARDS` independent single-GPU processes
+instead of one tensor-parallel job: the requests are independent, so tensor
+parallelism would add communication cost for no benefit. Two shards fit exactly
+inside the 2-GPU cap.
