@@ -53,9 +53,47 @@ python scripts/check_split_quality.py                    # must print PASS (wors
 `data/splits/sft_train_3000_seed42.json` holds, per problem: `sample_id`
 (traceable back to a `deepscaler.json` row), `problem`, `answer`, `acc_thinking`
 (the released K>=16 reference accuracy), `bucket`, `order_index` and the fixed
-`nothinking_seeds` used to sample it. Labels (`acc_nothinking`, `label`, `gain`)
-are joined on later by `scripts/build_router_labels.py` and stored separately in
-`data/sft/labels_3000.jsonl`; labels never change which problems are in the split.
+`nothinking_seeds` used to sample it. NoThinking labels are scored and joined to the released Thinking statistics by
+`scripts/build_router_labels.py`; pilot/full outputs are saved under
+`results/router_labels_1p5b/`. Labels never change which problems are in the split.
+
+## Dual-mode Router label pilot (16K, single V100)
+
+For objective C we predict `[p_thinking, p_nothinking]`. The released Thinking
+success-rate estimates (K>=16) are reused from the frozen DeepScaleR manifest.
+Only **NoThinking K=4** is newly generated. First test on the **600-question
+stratified pilot**; no router is trained in this stage.
+
+```bash
+cd ~/AdaptThink
+git pull --ff-only origin main
+source .venv/bin/activate
+
+# CPU preflight: no model generation
+python scripts/gen_nothinking_train.py --pilot --limit 8 --preflight \
+  --max-tokens 16384 --max-num-seqs 8 \
+  --output-dir outputs/router_labels_train_16k
+
+# Run only ONE job at a time; the full pilot reuses completed smoke generations.
+sbatch scripts/ntu_router_labels_16k.sbatch --smoke
+# After smoke completes, run the 600-question pilot; resubmit if timed out.
+sbatch scripts/ntu_router_labels_16k.sbatch
+
+# Once all 600 x 4 = 2400 NoThinking outputs exist, score them on CPU.
+python scripts/build_router_labels.py
+```
+
+- Output generations: `outputs/router_labels_train_16k/nothinking.jsonl` (ignored by Git).
+- Final labels: `results/router_labels_1p5b/pilot_600_labels.jsonl` and
+  `results/router_labels_1p5b/pilot_600_summary.json`.
+- Settings: `max_tokens=16384`, temperature 0.6, top-p 0.95, forced `</think>`,
+  `max_num_seqs=8`, FP16 and XFormers, chunked prefill OFF.
+- Isolated from historical 8K label runs. The smoke contributes eight completed
+  generations to the subsequent pilot; avoid concurrent submissions.
+- To expand later: `sbatch scripts/ntu_router_labels_16k.sbatch --all` and
+  `python scripts/build_router_labels.py --all`.
+- K=4 NoThinking labels are noisier than the released K>=16 Thinking labels;
+  pilot accuracy means reflect a stratified rather than random DeepScaleR sample.
 
 ## Current Work: AdaptThink Baseline Evaluation
 
