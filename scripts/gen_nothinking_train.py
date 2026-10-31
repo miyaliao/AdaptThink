@@ -87,13 +87,13 @@ def build_config(manifest, args):
     }
 
 
-def init_header(config):
-    OUTPUT.mkdir(parents=True, exist_ok=True)
-    path = OUTPUT / "config.json"
+def init_header(config, output_dir):
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "config.json"
     if path.exists():
         stored = json.loads(path.read_text(encoding="utf-8"))
         if stored != config:
-            raise RuntimeError("Refusing to mix incompatible runs in " + str(OUTPUT))
+            raise RuntimeError("Refusing to mix incompatible runs in " + str(output_dir))
     else:
         path.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n",
                         encoding="utf-8")
@@ -143,6 +143,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, default=MANIFEST)
     parser.add_argument("--max-tokens", type=int, default=8192)
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT,
+                        help="Separate output directory for each generation protocol; relative to repo root")
     parser.add_argument("--max-num-seqs", type=int, default=16)
     parser.add_argument("--dtype", default="float16", choices=("float16", "bfloat16"),
                         help="V100 needs float16; H100/H200 should use bfloat16")
@@ -163,6 +165,9 @@ def main():
         raise RuntimeError("Missing model directory: " + str(MODEL))
     if args.shards < 1 or not 0 <= args.shard < args.shards:
         parser.error("--shard must be in [0, --shards)")
+    if args.max_tokens <= 1 or args.max_num_seqs < 1 or args.batch < 1 or args.limit < 0:
+        parser.error("Require --max-tokens > 1, --max-num-seqs >= 1, --batch >= 1, --limit >= 0")
+    output_dir = args.output_dir if args.output_dir.is_absolute() else ROOT / args.output_dir
 
     manifest, samples = load_manifest(args.manifest)
     if args.pilot:
@@ -193,7 +198,7 @@ def main():
         raise RuntimeError(f"{len(too_long)} prompts exceed the 1024-token allowance, "
                            f"e.g. {too_long[:3]}")
     config = build_config(manifest, args)
-    init_header(config)
+    init_header(config, output_dir)
     print(f"PREFLIGHT_OK problems={len({t['sample_id'] for t in tasks})} "
           f"generations={len(tasks)} k={k_total} max_prompt_len={max_len} "
           f"max_tokens={args.max_tokens}", flush=True)
@@ -201,7 +206,7 @@ def main():
         return
 
     from vllm import LLM, SamplingParams
-    path = OUTPUT / (f"shard{args.shard}of{args.shards}.jsonl" if args.shards > 1
+    path = output_dir / (f"shard{args.shard}of{args.shards}.jsonl" if args.shards > 1
                      else "nothinking.jsonl")
     done = completed(path)
     todo = [t for t in tasks if (t["sample_id"], t["k"]) not in done]
