@@ -155,3 +155,25 @@ The PBS script splits the work into `SHARDS` independent single-GPU processes
 instead of one tensor-parallel job: the requests are independent, so tensor
 parallelism would add communication cost for no benefit. Two shards fit exactly
 inside the 2-GPU cap.
+
+## 10. One canonical label file (merge note, 2026-10-31)
+
+Two label pipelines were written in parallel the same day: one aimed at the NTU
+TC1 Slurm path (16K pilot, `scripts/ntu_router_labels_16k.sbatch`), one aimed at
+the GAAS H200 path (two single-GPU shards). They are now merged into a single
+`scripts/build_router_labels.py` that keeps the strict input validation of the
+TC1 version (manifest hash, sampling protocol, per-row seed/order checks), the
+multi-shard input support of the H200 version, and the training-label fields plus
+proxy-calibration report both routes need.
+
+**Only one sample set may be scored.** The same 3,000 problems were being
+generated on both clusters; scoring both would train the two routes on different
+data and make the curves incomparable. The GAAS run finished first (12,000
+answers, 16,384-token cap, `outputs/nothinking_train_seed42/`), so it is the
+canonical input. The TC1 workflow stays in the repository as a fallback only.
+
+Known bug fixed in both paths: `gen_nothinking_train.py` used to write its
+`config.json` header during `--preflight`. Preflight runs with default runtime
+flags, so the header it wrote made the following generation run look
+incompatible with itself and abort. Only a real generation run writes the header
+now.

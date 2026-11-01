@@ -197,13 +197,17 @@ def main():
     if too_long:
         raise RuntimeError(f"{len(too_long)} prompts exceed the 1024-token allowance, "
                            f"e.g. {too_long[:3]}")
-    config = build_config(manifest, args)
-    init_header(config, output_dir)
     print(f"PREFLIGHT_OK problems={len({t['sample_id'] for t in tasks})} "
           f"generations={len(tasks)} k={k_total} max_prompt_len={max_len} "
           f"max_tokens={args.max_tokens}", flush=True)
     if args.preflight:
         return
+
+    # Only a real generation run writes the header. Preflight runs with default
+    # runtime flags (e.g. --max-num-seqs), so a header written there would make
+    # the following generation run look incompatible with itself.
+    config = build_config(manifest, args)
+    init_header(config, output_dir)
 
     from vllm import LLM, SamplingParams
     path = output_dir / (f"shard{args.shard}of{args.shards}.jsonl" if args.shards > 1

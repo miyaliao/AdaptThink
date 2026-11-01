@@ -1,0 +1,59 @@
+#!/bin/bash
+#PBS -P ds_ccds_wei.lu
+#PBS -q gpu_ded
+#PBS -l select=1:ncpus=8:ngpus=1
+#PBS -l walltime=00:40:00
+#PBS -N nt_score
+
+# Score generated NoThinking answers and build router labels.
+#
+# The work is CPU-bound (the repository's math scorer), but this cluster only
+# accepts GPU jobs, so one GPU is requested and left idle. 12,000 answers take a
+# few minutes with 8 workers.
+#
+# Submit (GAAS run, all 3,000 problems):
+#     qsub -v REPO=$PWD,ENV_ACTIVATE=$HOME/activate_nt.sh,\
+# INPUT_DIR=outputs/nothinking_train_seed42,SCOPE=all scripts/lab_score_labels.pbs
+#
+# Output: results/router_labels_1p5b/all_3000_labels.jsonl and ..._summary.json
+#
+# Note on scope: two clusters produced (or are producing) the same NoThinking
+# sample set. Only ONE of them should be scored and used as the canonical labels,
+# otherwise the two routes end up trained on different data. The GAAS H200 run
+# finished first (12,000 answers, 16,384-token cap), so it is the default here.
+
+set -euo pipefail
+
+REPO="${REPO:-$HOME/AdaptThink}"
+MODULES="${MODULES:-anaconda/2025 cuda/13.0}"
+ENV_ACTIVATE="${ENV_ACTIVATE:-}"
+WORKERS="${WORKERS:-8}"
+INPUT_DIR="${INPUT_DIR:-outputs/nothinking_train_seed42}"
+OUTPUT_DIR="${OUTPUT_DIR:-results/router_labels_1p5b}"
+SCOPE="${SCOPE:-all}"          # all | pilot
+
+cd "$REPO"
+for m in $MODULES; do
+  module load "$m" 2>/dev/null || echo "WARNING: module $m not available"
+done
+if [ -n "$ENV_ACTIVATE" ]; then
+  # shellcheck disable=SC1090
+  source "$ENV_ACTIVATE"
+fi
+export PYTHONNOUSERSITE=1
+export TOKENIZERS_PARALLELISM=false
+
+echo "PBS job: ${PBS_JOBID:-local}"
+echo "Node: $(hostname)"
+echo "input=$INPUT_DIR output=$OUTPUT_DIR scope=$SCOPE workers=$WORKERS"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+
+if [ "$SCOPE" = "pilot" ]; then
+  python -u scripts/build_router_labels.py --input-dir "$INPUT_DIR" \
+    --output-dir "$OUTPUT_DIR" --workers "$WORKERS"
+else
+  python -u scripts/build_router_labels.py --input-dir "$INPUT_DIR" \
+    --output-dir "$OUTPUT_DIR" --workers "$WORKERS" --all
+fi
+
+echo "LABELS_DONE"
