@@ -67,6 +67,9 @@ def load_rows(path):
                     "mean_tokens_thinking", "mean_tokens_nothinking", "order_index"):
             if key not in row:
                 raise RuntimeError(f"Label row {row.get('sample_id')} missing {key}")
+        if not row["problem"] or not isinstance(row["problem"], str):
+            raise RuntimeError(f"Label row {row.get('sample_id')} has no problem text; "
+                               "rebuild the label file with scripts/build_val_labels.py")
     return rows
 
 

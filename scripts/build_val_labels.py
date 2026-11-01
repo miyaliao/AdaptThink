@@ -54,6 +54,16 @@ def main():
         only_n = sorted(set(nothinking) - set(thinking))[:5]
         raise RuntimeError(f"Mode mismatch: only thinking={only_t}, only nothinking={only_n}")
 
+    # The trainer needs the problem text to build prompts, so recover it from the
+    # frozen split by (dataset, row index).
+    split = json.loads(SPLIT.read_text(encoding="utf-8"))
+    problems = {}
+    for dataset in ("gsm8k", "math"):
+        meta = split["source_files"][dataset]
+        items = json.loads((ROOT / meta["path"]).read_text(encoding="utf-8"))
+        for index in meta["selected_indices"]:
+            problems[f"{dataset}:{index}:0"] = items[index]["problem"]
+
     sys.path.insert(0, str(ROOT))
     from src.adapt_think_rm import adapt_think_rm
 
@@ -68,7 +78,7 @@ def main():
                                     ground_truth=n_row["answer"])["acc"])
         rows.append({
             "sample_id": qid,
-            "problem": None,                       # kept out of the file on purpose
+            "problem": problems[qid],              # required to build the prompt
             "bucket": "val",
             "order_index": position,
             "p_thinking": p_t,
