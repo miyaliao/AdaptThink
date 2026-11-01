@@ -1,0 +1,45 @@
+#!/bin/bash
+#PBS -P ds_ccds_wei.lu
+#PBS -q gpu_ded
+#PBS -l select=1:ncpus=8:ngpus=1
+#PBS -l walltime=01:00:00
+#PBS -N nt_val450
+
+# Produce labelled in-distribution validation data for threshold selection:
+#   1. generate Thinking + NoThinking for the 450 frozen validation questions
+#   2. score both modes with the repository scorer
+#
+# Why: the training labels come from DeepScaleR (hard), while the reported curves
+# are on GSM8K/MATH-500/AIME. The p_nt threshold must be picked where it is used.
+#
+# Submit:
+#     qsub -v REPO=$PWD,ENV_ACTIVATE=$HOME/activate_nt.sh scripts/lab_val_pipeline.pbs
+#
+# Output: outputs/val_450/*.jsonl, results/val_450_labels.jsonl
+
+set -euo pipefail
+
+REPO="${REPO:-$HOME/AdaptThink}"
+MODULES="${MODULES:-anaconda/2025 cuda/13.0}"
+ENV_ACTIVATE="${ENV_ACTIVATE:-}"
+
+cd "$REPO"
+for m in $MODULES; do
+  module load "$m" 2>/dev/null || echo "WARNING: module $m not available"
+done
+if [ -n "$ENV_ACTIVATE" ]; then
+  # shellcheck disable=SC1090
+  source "$ENV_ACTIVATE"
+fi
+export PYTHONNOUSERSITE=1
+export TOKENIZERS_PARALLELISM=false
+
+echo "PBS job: ${PBS_JOBID:-local}"
+echo "Node: $(hostname)"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+
+python -u scripts/gen_val_outputs.py --preflight
+python -u scripts/gen_val_outputs.py --mode both --dtype bfloat16 --max-tokens 16384
+python -u scripts/build_val_labels.py
+
+echo "VAL_PIPELINE_DONE"

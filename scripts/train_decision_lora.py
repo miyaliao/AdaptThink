@@ -24,9 +24,13 @@ p_nt, so lam only decides where the model's decision boundary is sharpest.
 
 Split
 -----
-    order_index % --val-mod != 0 -> train
-    order_index % --val-mod == 0 -> held-out, used to report AUC and to pick the
-                                    p_nt threshold (never the test set)
+Preferred: --val-labels points at a labelled validation file that shares no
+problem with the training set (the 450 GSM8K/MATH validation questions). Then all
+training labels are used and the threshold is picked in-distribution.
+
+Fallback (no validation labels yet): --val-mod K holds out every K-th order_index
+from the training set. It costs nothing but the held-out problems are DeepScaleR
+competition problems, so the threshold it produces is off-distribution.
 
 CPU-free diagnostics are printed at the end so a failed run is obvious: the p_nt
 distribution, AUC, accuracy at 0.5, and how many trainable parameters moved.
@@ -197,7 +201,11 @@ def main():
     parser.add_argument("--lora-alpha", type=int, default=32)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--max-len", type=int, default=1024)
-    parser.add_argument("--val-mod", type=int, default=5)
+    parser.add_argument("--val-mod", type=int, default=5,
+                        help="Fallback split: hold out every K-th training problem when "
+                             "--val-labels is absent (1 disables the fallback)")
+    parser.add_argument("--val-labels", type=Path, default=None,
+                        help="Labelled in-distribution validation file (same schema as --labels)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--threads", type=int, default=8)
     args = parser.parse_args()
@@ -217,10 +225,24 @@ def main():
         tokenizer.pad_token = tokenizer.eos_token
 
     rows = load_rows(args.labels)
-    train_rows = [r for r in rows if r["order_index"] % args.val_mod != 0]
-    val_rows = [r for r in rows if r["order_index"] % args.val_mod == 0]
+    if args.val_labels is not None:
+        train_rows = rows
+        val_rows = load_rows(args.val_labels)
+        train_ids = {r["sample_id"] for r in rows}
+        overlap = train_ids & {r["sample_id"] for r in val_rows}
+        if overlap:
+            raise RuntimeError(f"{len(overlap)} validation problems also appear in training, "
+                               f"e.g. {sorted(overlap)[:3]}")
+        print(f"external validation: {args.val_labels} ({len(val_rows)} problems, no overlap)")
+    else:
+        if args.val_mod < 2:
+            raise RuntimeError("Pass --val-labels, or --val-mod >= 2 for the fallback split")
+        train_rows = [r for r in rows if r["order_index"] % args.val_mod != 0]
+        val_rows = [r for r in rows if r["order_index"] % args.val_mod == 0]
+        print(f"fallback split: held-out every {args.val_mod}th problem "
+              f"(off-distribution; prefer --val-labels)")
     if not train_rows or not val_rows:
-        raise RuntimeError("Empty train/val split; check --val-mod")
+        raise RuntimeError("Empty train/val split")
 
     train_ds = RouterDataset(train_rows, tokenizer, args.max_len,
                              args.lam, args.temperature, not args.hard)

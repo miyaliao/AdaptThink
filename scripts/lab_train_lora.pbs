@@ -44,8 +44,20 @@ echo "Node: $(hostname)"
 echo "lam=$LAM epochs=$EPOCHS lr=$LR suffix=$SUFFIX"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
+# Prefer the 450-question in-distribution validation labels; fall back to an
+# internal hold-out only when they do not exist yet (off-distribution, for smoke
+# tests). With validation labels, all 3,000 training labels are used.
+VAL_ARGS=()
+if [ -f results/val_450_labels.jsonl ]; then
+  VAL_ARGS=(--val-labels results/val_450_labels.jsonl)
+  echo "validation: results/val_450_labels.jsonl (in-distribution)"
+else
+  echo "validation: internal hold-out every 5th problem (off-distribution)"
+fi
+
 python -u scripts/train_decision_lora.py \
   --lam "$LAM" --epochs "$EPOCHS" --lr "$LR" \
+  ${VAL_ARGS[@]+"${VAL_ARGS[@]}"} \
   --output-dir "outputs/lora_router_${SUFFIX}"
 
 echo "LORA_TRAIN_DONE outputs/lora_router_${SUFFIX}"
