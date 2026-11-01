@@ -33,6 +33,10 @@ if [ -n "$ENV_ACTIVATE" ]; then
 fi
 export PYTHONNOUSERSITE=1
 export TOKENIZERS_PARALLELISM=false
+# GAAS exports CUDA_VISIBLE_DEVICES as a GPU UUID, and vLLM 0.8.5 tries to parse it
+# as an integer inside the V1 engine-selection path. Disable the V1 engine.
+export VLLM_USE_V1=0
+export VLLM_ATTENTION_BACKEND=FLASH_ATTN
 
 echo "PBS job: ${PBS_JOBID:-local}"
 echo "Node: $(hostname)"

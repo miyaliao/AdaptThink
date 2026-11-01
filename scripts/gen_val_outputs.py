@@ -36,6 +36,33 @@ EOS_THINK = 151649
 OFFSETS = {"gsm8k": 0, "math": 200000, "aime": 400000}
 
 
+def _fix_vllm_uuid_devices():
+    """vLLM 0.8.5 casts CUDA_VISIBLE_DEVICES entries to int; GAAS exports GPU UUIDs.
+
+    With CUDA_VISIBLE_DEVICES="GPU-xxxx", CUDA already maps logical index 0 to that
+    device, so returning the logical id unchanged is the correct physical mapping.
+    """
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    if not visible.startswith("GPU-"):
+        return
+    try:
+        import vllm.platforms.cuda as cuda_platform
+    except Exception:                                  # pragma: no cover
+        return
+
+    def logical_id(device_id):
+        if device_id is None:
+            return 0
+        if isinstance(device_id, str):
+            try:
+                return int(device_id)
+            except ValueError:
+                return 0
+        return int(device_id)
+
+    cuda_platform.device_id_to_physical_device_id = logical_id
+    print(f"PATCHED vllm uuid devices: {visible.split(',')[0][:20]}...", flush=True)
+
 def load_tasks():
     split = json.loads(SPLIT.read_text(encoding="utf-8"))
     tasks = []
@@ -132,6 +159,7 @@ def main():
             print("WARNING: config differs from the stored header; overwriting", flush=True)
     header.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
+    _fix_vllm_uuid_devices()
     from vllm import LLM, SamplingParams
     modes = ["thinking", "nothinking"] if args.mode == "both" else [args.mode]
     engine = LLM(model=str(MODEL), dtype=args.dtype, tensor_parallel_size=1,
