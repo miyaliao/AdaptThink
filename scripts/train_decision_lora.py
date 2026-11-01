@@ -318,6 +318,14 @@ def main():
     scores, ids, targets = p_nt_of(model, val_ds, pad_id, device)
     score_by_id = dict(zip(ids, scores))
     ordered_scores = [score_by_id[x["sample_id"]] for x in val_ds.items]
+
+    # In-sample diagnostic: if train AUC is also ~0.5, the one-token objective has no
+    # signal at all; if train AUC is high but val AUC is not, it is a transfer/measurement
+    # problem instead.
+    train_scores, train_ids, _ = p_nt_of(model, train_ds, pad_id, device)
+    train_hard = [make_target(x, args.lam, args.temperature, False)[0] for x in train_ds.items]
+    train_auc = auc(train_scores, train_hard)
+
     report = {
         "lam": args.lam, "soft": not args.hard, "temperature": args.temperature,
         "epochs": args.epochs, "lora_r": args.lora_r, "lr": args.lr,
@@ -326,6 +334,9 @@ def main():
         "best_val_auc": best_auc, "best_epoch": best_epoch,
         "val_p_nt": describe(ordered_scores),
         "val_auc_final": auc(ordered_scores, hard_val),
+        "train_auc_in_sample": train_auc,
+        "train_p_nt": describe(train_scores),
+        "train_pos_rate": sum(train_hard) / len(train_hard),
     }
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "train_report.json").write_text(
