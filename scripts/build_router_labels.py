@@ -109,24 +109,25 @@ def load_generations(input_dir, selected, k, allow_extra):
     return records, [p.name for p in files]
 
 
-def score_rows(jobs, workers):
-    """Score (response, answer) pairs with the official scorer."""
+def _score_one(job):
+    """Score one answer. Module level so multiprocessing can pickle it."""
     sys.path.insert(0, str(ROOT))
     from src.adapt_think_rm import adapt_think_rm
+    response, answer = job
+    try:
+        out = adapt_think_rm(data_source="", solution_str=response, ground_truth=answer)
+        return float(out["acc"]), str(out["pred"])
+    except Exception as exc:                   # one bad row must not kill the run
+        return 0.0, f"ERROR: {type(exc).__name__}"
 
-    def one(job):
-        response, answer = job
-        try:
-            out = adapt_think_rm(data_source="", solution_str=response, ground_truth=answer)
-            return float(out["acc"]), str(out["pred"])
-        except Exception as exc:               # one bad row must not kill the run
-            return 0.0, f"ERROR: {type(exc).__name__}"
 
+def score_rows(jobs, workers):
+    """Score (response, answer) pairs with the official scorer."""
     if workers > 1 and len(jobs) > 1000:
         from multiprocessing import Pool
         with Pool(workers) as pool:
-            return pool.map(one, jobs, chunksize=max(1, len(jobs) // (workers * 8)))
-    return [one(job) for job in jobs]
+            return pool.map(_score_one, jobs, chunksize=max(1, len(jobs) // (workers * 8)))
+    return [_score_one(job) for job in jobs]
 
 
 def build_labels(selected, records, scores, k):

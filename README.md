@@ -53,47 +53,88 @@ python scripts/check_split_quality.py                    # must print PASS (wors
 `data/splits/sft_train_3000_seed42.json` holds, per problem: `sample_id`
 (traceable back to a `deepscaler.json` row), `problem`, `answer`, `acc_thinking`
 (the released K>=16 reference accuracy), `bucket`, `order_index` and the fixed
-`nothinking_seeds` used to sample it. NoThinking labels are scored and joined to the released Thinking statistics by
-`scripts/build_router_labels.py`; pilot/full outputs are saved under
-`results/router_labels_1p5b/`. Labels never change which problems are in the split.
+`nothinking_seeds` used to sample it. Labels (`acc_nothinking`, `label`, `gain`)
+are joined on later by `scripts/build_router_labels.py` and stored separately in
+`data/sft/labels_3000.jsonl`; labels never change which problems are in the split.
 
-## Dual-mode Router label pilot (16K, single V100)
+## Router labels: measured, not inferred (2026-10-31)
 
-For objective C we predict `[p_thinking, p_nothinking]`. The released Thinking
-success-rate estimates (K>=16) are reused from the frozen DeepScaleR manifest.
-Only **NoThinking K=4** is newly generated. First test on the **600-question
-stratified pilot**; no router is trained in this stage.
+Both routes need one label per training problem: should this problem skip thinking?
+We **measured** it instead of assuming it, because the obvious shortcut fails.
 
-```bash
-cd ~/AdaptThink
-git pull --ff-only origin main
-source .venv/bin/activate
+**The shortcut does not work.** The cheap rule "Thinking accuracy >= 0.875, therefore
+the problem is easy, therefore NoThinking is fine" agrees with the measured labels
+only **53.4%** of the time and would mislabel **1,397 of 3,000** problems (precision
+39%, recall 23%). Even where Thinking solves a problem 16/16 times, NoThinking still
+loses **28 accuracy points** (98.3% -> 70.3%):
 
-# CPU preflight: no model generation
-python scripts/gen_nothinking_train.py --pilot --limit 8 --preflight \
-  --max-tokens 16384 --max-num-seqs 8 \
-  --output-dir outputs/router_labels_train_16k
+| bucket (Thinking accuracy) | n | p(Thinking) | p(NoThinking) | NoThinking worse | NoThinking better | tie | tok Thinking | tok NoThinking |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| never (0.0) | 600 | 0.000 | 0.064 | 0% | 15% | 85% | 11,282 | 3,046 |
+| rare (0, 0.25] | 600 | 0.140 | 0.096 | 74% | 22% | 4% | 11,663 | 4,108 |
+| sometimes (0.25, 0.5] | 600 | 0.403 | 0.180 | 81% | 17% | 3% | 10,425 | 3,669 |
+| usually (0.5, 0.875] | 600 | 0.740 | 0.357 | 84% | 14% | 2% | 7,403 | 2,513 |
+| always (0.875, 1] | 600 | 0.983 | 0.703 | 56% | 6% | 38% | 3,462 | 989 |
 
-# Run only ONE job at a time; the full pilot reuses completed smoke generations.
-sbatch scripts/ntu_router_labels_16k.sbatch --smoke
-# After smoke completes, run the 600-question pilot; resubmit if timed out.
-sbatch scripts/ntu_router_labels_16k.sbatch
+**How a label is produced.** Per problem we join two measured success rates: the
+released Thinking rate (K>=16, `data/train/ref_results/`) and our own NoThinking rate
+(K=4, 16,384-token cap, generated on GAAS H200). Both are scored by the repository's
+own `src/adapt_think_rm.py`. Then:
 
-# Once all 600 x 4 = 2400 NoThinking outputs exist, score them on CPU.
-python scripts/build_router_labels.py
+```
+gain            = p_nothinking - p_thinking
+label           = 1 if gain >= 0                 (ties favour the cheaper mode)
+label_margin    = 1 if gain >= -0.125
+label_soft      = sigmoid(gain / 0.25)
+suggested_weight= 1.0 on the boundary buckets, 0.5 elsewhere
 ```
 
-- Output generations: `outputs/router_labels_train_16k/nothinking.jsonl` (ignored by Git).
-- Final labels: `results/router_labels_1p5b/pilot_600_labels.jsonl` and
-  `results/router_labels_1p5b/pilot_600_summary.json`.
-- Settings: `max_tokens=16384`, temperature 0.6, top-p 0.95, forced `</think>`,
-  `max_num_seqs=8`, FP16 and XFormers, chunked prefill OFF.
-- Isolated from historical 8K label runs. The smoke contributes eight completed
-  generations to the subsequent pilot; avoid concurrent submissions.
-- To expand later: `sbatch scripts/ntu_router_labels_16k.sbatch --all` and
-  `python scripts/build_router_labels.py --all`.
-- K=4 NoThinking labels are noisier than the released K>=16 Thinking labels;
-  pilot accuracy means reflect a stratified rather than random DeepScaleR sample.
+Distribution over the 3,000 problems: **1,236 NoThinking / 1,764 Thinking**, 795 ties.
+23.7% of the *reference* Thinking generations hit the 16,384 cap, so `p_thinking` is a
+lower bound; the evaluation uses the same cap, so label and evaluation share a protocol.
+
+**Choosing lambda (the token price).** The group's objective is `max accuracy s.t. mean
+output tokens <= B`, so the per-problem optimum is not "route NoThinking when it is at
+least as accurate" (that is the B = infinity case) but
+`(p_nothinking - p_thinking) + lambda * (t_thinking - t_nothinking) >= 0`.
+lambda is not guessed: it is read off the measured oracle frontier, obtained by ranking
+the 3,000 problems with their measured values (this is the **ceiling** for any router):
+
+| lambda (acc per 1k tokens) | NoThinking share | mean tokens | mean accuracy |
+| ---: | ---: | ---: | ---: |
+| 0 | 41.2% | 6,073 | **49.2%** |
+| 0.010 | 45.4% | 5,535 | 48.9% |
+| **0.020** | **51.7%** | **4,993** | **48.0%** |
+| 0.050 | 65.1% | 3,978 | 44.7% |
+| 0.200 | 86.4% | 2,955 | 35.1% |
+| always NoThinking | 100% | 2,865 | 28.0% |
+| always Thinking | 0% | 8,847 | 45.3% |
+
+The frontier dominates every fixed mode on both axes at lambda <= 0.02, and the biggest
+gap to a budget-matched random router is around 4,000-6,000 tokens per problem. We
+train with **lambda_ref = 0.02** (near the knee, ~52% NoThinking, balanced labels) and
+keep **lambda = 0** as an ablation. lambda is a *training* hyperparameter only: the
+deployed knob is a threshold on `p_nt` swept on the validation split, which is what
+actually traces the budget curve.
+
+**Reproduce.**
+
+```bash
+# 12,000 NoThinking answers on 3,000 problems (GAAS H200, ~30 min on 2 GPUs)
+qsub -v REPO=$PWD,STAGE=all,MAX_TOKENS=16384,ENV_ACTIVATE=$HOME/activate_nt.sh \
+     scripts/lab_nothinking_train.pbs
+# labels + calibration report (few minutes)
+qsub -v REPO=$PWD,ENV_ACTIVATE=$HOME/activate_nt.sh,\
+INPUT_DIR=outputs/nothinking_train_seed42,SCOPE=all scripts/lab_score_labels.pbs
+# LoRA on the first-token decision (~2 min)
+qsub -v REPO=$PWD,ENV_ACTIVATE=$HOME/activate_nt.sh scripts/lab_train_lora.pbs
+```
+
+Committed products: `results/router_labels_1p5b/all_3000_labels.jsonl` (the labels),
+`all_3000_summary.json` (per-bucket stats and proxy calibration), and
+`checksums.sha256` (hashes of the raw generation shards, which stay out of Git).
+The raw shards are reproducible from the commands above; the frozen manifest hash
+`9c71b21f3272` pins which problems were used.
 
 ## Current Work: AdaptThink Baseline Evaluation
 
