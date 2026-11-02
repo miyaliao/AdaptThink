@@ -18,3 +18,9 @@ __pycache__/
 
 # Personal Slurm experiment scripts at repository root (not tracked)
 /*.sbatch
+
+# PBS job logs
+*.o[0-9]*
+*.e[0-9]*
+*.pbs.[oe][0-9]*
+nt_*.log

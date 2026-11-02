@@ -1,0 +1,34 @@
+{
+  "scope": "val_450",
+  "n_questions": 450,
+  "note": "single generation per mode per question; higher noise than the training labels",
+  "means": {
+    "p_thinking": 0.7844444444444445,
+    "p_nothinking": 0.6777777777777778,
+    "mean_tokens_thinking": 2208.9933333333333,
+    "mean_tokens_nothinking": 567.6066666666667,
+    "truncation_thinking": 0.03111111111111111,
+    "truncation_nothinking": 0.006666666666666667
+  },
+  "comparison": {
+    "thinking_better": 75,
+    "equal": 348,
+    "nothinking_better": 27
+  },
+  "per_dataset": {
+    "gsm8k": {
+      "n": 300,
+      "p_thinking": 0.79,
+      "p_nothinking": 0.6866666666666666,
+      "mean_tokens_thinking": 906.5133333333333,
+      "mean_tokens_nothinking": 290.49
+    },
+    "math": {
+      "n": 150,
+      "p_thinking": 0.7733333333333333,
+      "p_nothinking": 0.66,
+      "mean_tokens_thinking": 4813.953333333333,
+      "mean_tokens_nothinking": 1121.84
+    }
+  }
+}
