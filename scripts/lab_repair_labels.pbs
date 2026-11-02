@@ -1,0 +1,49 @@
+#!/bin/bash
+#PBS -P ds_ccds_wei.lu
+#PBS -q gpu_ded
+#PBS -l select=1:ncpus=8:ngpus=1
+#PBS -l walltime=00:40:00
+#PBS -N nt_repair
+
+# Repair badly formatted NoThinking answers and rebuild the router labels.
+#
+# 23.4% of the generated NoThinking answers were rejected by the scorer for
+# formatting (second <think> block, doubled </think>, or no \boxed{}), even when
+# the answer was right. That depresses p_nothinking and mislabels problems.
+#
+# This writes a repaired copy of the generations, rescoring them, and rebuilds the
+# labels into a separate output directory so the strict version stays available
+# for comparison.
+#
+# Submit:
+#     qsub -v REPO=$PWD,ENV_ACTIVATE=$HOME/activate_nt.sh scripts/lab_repair_labels.pbs
+#
+# Output: outputs/nothinking_train_repaired/, results/router_labels_1p5b_repaired/
+
+set -euo pipefail
+
+REPO="${REPO:-$HOME/AdaptThink}"
+MODULES="${MODULES:-anaconda/2025 cuda/13.0}"
+ENV_ACTIVATE="${ENV_ACTIVATE:-}"
+
+cd "$REPO"
+for m in $MODULES; do
+  module load "$m" 2>/dev/null || echo "WARNING: module $m not available"
+done
+if [ -n "$ENV_ACTIVATE" ]; then
+  # shellcheck disable=SC1090
+  source "$ENV_ACTIVATE"
+fi
+export PYTHONNOUSERSITE=1
+export TOKENIZERS_PARALLELISM=false
+
+echo "PBS job: ${PBS_JOBID:-local}"
+echo "Node: $(hostname)"
+
+python -u scripts/repair_nothinking.py
+python -u scripts/build_router_labels.py \
+  --input-dir outputs/nothinking_train_repaired \
+  --output-dir results/router_labels_1p5b_repaired \
+  --all --workers 8
+
+echo "REPAIR_PIPELINE_DONE"

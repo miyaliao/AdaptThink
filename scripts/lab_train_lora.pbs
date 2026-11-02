@@ -27,6 +27,7 @@ LAM="${LAM:-0.02}"
 EPOCHS="${EPOCHS:-3}"
 LR="${LR:-2e-4}"
 SUFFIX="${SUFFIX:-lam002}"
+LABELS="${LABELS:-results/router_labels_1p5b/all_3000_labels.jsonl}"
 
 cd "$REPO"
 for m in $MODULES; do
@@ -55,7 +56,9 @@ else
   echo "validation: internal hold-out every 5th problem (off-distribution)"
 fi
 
+echo "labels: $LABELS"
 python -u scripts/train_decision_lora.py \
+  --labels "$LABELS" \
   --lam "$LAM" --epochs "$EPOCHS" --lr "$LR" \
   ${VAL_ARGS[@]+"${VAL_ARGS[@]}"} \
   --output-dir "outputs/lora_router_${SUFFIX}"

@@ -65,7 +65,9 @@ def main():
             problems[f"{dataset}:{index}:0"] = items[index]["problem"]
 
     sys.path.insert(0, str(ROOT))
+    sys.path.insert(0, str(ROOT / "scripts"))
     from src.adapt_think_rm import adapt_think_rm
+    from repair_nothinking import repair
 
     rows = []
     for position, qid in enumerate(sorted(thinking)):
@@ -74,8 +76,11 @@ def main():
             raise RuntimeError(f"Answer mismatch for {qid}")
         p_t = float(adapt_think_rm(data_source="", solution_str=t_row["response"],
                                    ground_truth=t_row["answer"])["acc"])
-        p_nt = float(adapt_think_rm(data_source="", solution_str=n_row["response"],
-                                    ground_truth=n_row["answer"])["acc"])
+        p_nt_strict = float(adapt_think_rm(data_source="", solution_str=n_row["response"],
+                                           ground_truth=n_row["answer"])["acc"])
+        repaired, issue, _note = repair(n_row["response"])
+        p_nt = float(adapt_think_rm(data_source="", solution_str=repaired,
+                                    ground_truth=n_row["answer"])["acc"]) if issue else p_nt_strict
         rows.append({
             "sample_id": qid,
             "problem": problems[qid],              # required to build the prompt
@@ -83,6 +88,8 @@ def main():
             "order_index": position,
             "p_thinking": p_t,
             "p_nothinking": p_nt,
+            "p_nothinking_strict": p_nt_strict,
+            "nothinking_format_issue": bool(issue),
             "gain_thinking": p_t - p_nt,
             "k_thinking": 1,
             "k_nothinking": 1,
