@@ -1,0 +1,143 @@
+#!/bin/bash
+#PBS -P ds_ccds_wei.lu
+#PBS -q gpu_ded
+#PBS -l select=1:ncpus=16:ngpus=2:mem=128gb
+#PBS -l walltime=08:00:00
+#PBS -N nt_rl_small
+
+# Reduced-scale reproduction of AdaptThink's on-policy RL (2 GPUs).
+#
+# Method is unchanged from the paper: PPO-style training with the constrained
+# objective driving `1(y1 = </think>) * delta + R - R_ref`, and importance sampling
+# over the first token to avoid cold start. What is reduced is only the scale.
+#
+#   paper            ->  here
+#   40,000 problems  ->  3,000  (the frozen manifest)
+#   16 rollouts      ->  8
+#   16,384 response  ->  4,096
+#   4,096 NoThinking ->  1,024
+#   314 steps        ->  375 (one epoch)
+#   8xH800           ->  2xH200
+#
+# Checkpoints every 50 steps under checkpoints/sc4001_rl_small, so a time limit or a
+# crash costs at most 50 steps. Resubmit the same qsub command to resume.
+#
+# Submit:
+#     qsub -v REPO=$PWD,ENV_ACTIVATE=$HOME/activate_nt.sh scripts/lab_rl_small.pbs
+
+set -uo pipefail
+
+REPO="${REPO:-$HOME/AdaptThink}"
+MODULES="${MODULES:-anaconda/2025 cuda/13.0}"
+ENV_ACTIVATE="${ENV_ACTIVATE:-}"
+N_TRAIN="${N_TRAIN:-3000}"
+N_VAL="${N_VAL:-30}"
+ROLLOUTS="${ROLLOUTS:-8}"
+BATCH="${BATCH:-8}"
+RESP_LEN="${RESP_LEN:-4096}"
+NOTHINK_LEN="${NOTHINK_LEN:-1024}"
+STEPS="${STEPS:-375}"
+NGPU="${NGPU:-2}"
+
+cd "$REPO"
+for m in $MODULES; do module load "$m" 2>/dev/null || echo "WARNING: module $m not available"; done
+[ -n "$ENV_ACTIVATE" ] && source "$ENV_ACTIVATE"
+export PYTHONNOUSERSITE=1 TOKENIZERS_PARALLELISM=false HYDRA_FULL_ERROR=1
+
+echo "PBS job: ${PBS_JOBID:-local}"; echo "Node: $(hostname)"
+nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
+echo "problems=$N_TRAIN rollouts=$ROLLOUTS batch=$BATCH steps=$STEPS gpus=$NGPU"
+
+echo "=== step 0: environment probe ==="
+python - <<'PY'
+import importlib, sys
+need = ["torch", "vllm", "transformers", "ray", "hydra", "tensordict",
+        "pandas", "pyarrow", "datasets", "codetiming", "dill"]
+missing = []
+for name in need:
+    try:
+        mod = importlib.import_module(name)
+        print(f"  ok   {name} {getattr(mod, '__version__', '')}")
+    except Exception as exc:
+        missing.append(name)
+        print(f"  MISS {name}: {type(exc).__name__}")
+if missing:
+    print("MISSING_MODULES=" + ",".join(missing))
+    sys.exit(3)
+print("ENV_OK")
+PY
+[ $? -ne 0 ] && { echo "ABORT: environment incomplete"; exit 3; }
+
+echo "=== step 1: parquet subsets ==="
+if [ -f data/train/preprocessed_data/rl_small_train.parquet ]; then
+  echo "exists, skipping"
+else
+  python -u scripts/make_rl_subset.py --n-train "$N_TRAIN" --n-val "$N_VAL" \
+    --out-prefix rl_small || exit 4
+fi
+
+echo "=== step 2: RL training ==="
+python3 -m src.main_ppo \
+  algorithm.adv_estimator=naive \
+  algorithm.use_kl_in_reward=False \
+  reward_model.reward_manager=adapt_think \
+  reward_model.reward_kwargs.nothinking_bonus=0.05 \
+  reward_model.reward_kwargs.ref_result_file=./data/train/ref_results/DeepSeek-R1-Distill-Qwen-1.5B_deepscaler_K16_len16384.json \
+  data.train_files=./data/train/preprocessed_data/rl_small_train.parquet \
+  data.val_files=./data/train/preprocessed_data/rl_small_val.parquet \
+  data.train_batch_size=$BATCH \
+  data.val_batch_size=$N_VAL \
+  data.max_prompt_length=1024 \
+  data.max_response_length=$RESP_LEN \
+  data.filter_overlong_prompts=True \
+  data.truncation=error \
+  actor_rollout_ref.adapt_think.nothinking_ratio=0.5 \
+  actor_rollout_ref.adapt_think.nothinking_max_response_length=$NOTHINK_LEN \
+  actor_rollout_ref.adapt_think.eot_token_id=151649 \
+  actor_rollout_ref.adapt_think.non_eot_token_id=71486 \
+  actor_rollout_ref.adapt_think.adjust_old_logprobs=True \
+  actor_rollout_ref.model.path=./model/DeepSeek-R1-Distill-Qwen-1.5B \
+  actor_rollout_ref.model.enable_gradient_checkpointing=True \
+  actor_rollout_ref.model.use_remove_padding=False \
+  actor_rollout_ref.actor.optim.lr=2e-6 \
+  actor_rollout_ref.actor.ppo_mini_batch_size=$BATCH \
+  actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
+  actor_rollout_ref.actor.use_dynamic_bsz=False \
+  actor_rollout_ref.actor.ppo_max_token_len_per_gpu=16384 \
+  actor_rollout_ref.actor.use_kl_loss=False \
+  actor_rollout_ref.actor.entropy_coeff=0.0 \
+  actor_rollout_ref.actor.ulysses_sequence_parallel_size=1 \
+  actor_rollout_ref.actor.fsdp_config.param_offload=False \
+  actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
+  actor_rollout_ref.ref.fsdp_config.param_offload=True \
+  actor_rollout_ref.rollout.name=vllm \
+  actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+  actor_rollout_ref.rollout.gpu_memory_utilization=0.45 \
+  actor_rollout_ref.rollout.n=$ROLLOUTS \
+  actor_rollout_ref.rollout.temperature=0.6 \
+  actor_rollout_ref.rollout.top_p=0.95 \
+  actor_rollout_ref.rollout.max_num_batched_tokens=8192 \
+  actor_rollout_ref.rollout.enable_chunked_prefill=False \
+  actor_rollout_ref.rollout.enforce_eager=True \
+  actor_rollout_ref.rollout.val_kwargs.do_sample=True \
+  actor_rollout_ref.rollout.val_kwargs.n=1 \
+  actor_rollout_ref.rollout.val_kwargs.temperature=0.6 \
+  trainer.critic_warmup=0 \
+  trainer.logger=['console'] \
+  trainer.project_name=sc4001_rl_small \
+  trainer.experiment_name=manifest3k_n${ROLLOUTS}_len${RESP_LEN} \
+  trainer.default_local_dir=./checkpoints/sc4001_rl_small \
+  trainer.val_before_train=False \
+  trainer.test_freq=-1 \
+  trainer.save_freq=50 \
+  trainer.max_actor_ckpt_to_keep=2 \
+  trainer.total_epochs=1 \
+  trainer.total_training_steps=$STEPS \
+  trainer.n_gpus_per_node=$NGPU \
+  trainer.nnodes=1 \
+  custom_reward_function.path=./src/adapt_think_rm.py \
+  custom_reward_function.name=adapt_think_rm
+
+status=$?
+echo "RL_SMALL_EXIT=$status"
+exit $status
