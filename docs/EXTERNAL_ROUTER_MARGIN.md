@@ -1,6 +1,6 @@
 # Route A — ModernBERT Dual MSE and Dual MSE + Margin
 
-**Status (2026-11-02): implementation committed; GPU experiments not yet run.**
+**Status (2026-11-02): GPU smoke and both full validation runs completed successfully.** NTU Slurm **Job 71767**, `COMPLETED`, elapsed `00:07:45`, exit `0:0`. Results below are the exact values reported in the user's job log, not independently fetched from the server artifacts.
 
 This is the next controlled comparison after Classification, Dual BCE, and Delta MSE.
 The objectives are trained and evaluated independently using the **same** frozen
@@ -48,9 +48,7 @@ Expected input paths:
 - `results/router_labels_1p5b/all_3000_labels.jsonl` (3000 strict labels)
 - `results/val_450_labels.jsonl` (450; `p_nothinking_strict` used when present)
 
-The original strict **3,000-row JSONL currently is not on GitHub main**,
-although its summary is committed. Confirm that it still exists **on the NTU
-server**, where the previous Delta run succeeded. The new code refuses a
+The original strict **3,000-row JSONL is not on GitHub main** although its summary is committed. It was restored on the NTU server from GitHub commit `b812deda` before running Job 71767 (verified SHA256 `761dcbb6338de1a3c71def382089c83e8024e0e55af6334dd974963e8d7e0f2c`). The new code refuses a
 missing file or non-3000 size. **Do not substitute**:
 
 - `results/router_labels_1p5b_compliant/all_3000_labels.jsonl` (2777 rows)
@@ -135,12 +133,41 @@ in [`ROUTE_A_PLAN.md`](ROUTE_A_PLAN.md). The historical best is **Classification
 +2.37 pp** observed uplift vs Global Random at 1,092 average tokens (validation),
 not an independent test result.
 
-### Pending results (leave blank until GPU training)
+### Completed results — Full validation (450 problems)
 
-| Method | Best validation objective | Accuracy at ~1,100 tokens | Uplift vs matched Random |
-| --- | ---: | ---: | ---: |
-| Dual MSE | pending | pending | pending |
-| Dual MSE + Margin, beta=1 | pending | pending | pending |
+**Provenance:** Job `71767`, both arms completed `2026-11-02`, seed `42`, original strict DeepScaleR 3,000 and strict GSM8K/MATH 450; train SHA256 `761dcbb6338de1a3c71def382089c83e8024e0e55af6334dd974963e8d7e0f2c`, validation SHA256 `4c1e984d3744cc089dcc963a30af0ef3d1ed9808c4bfd245a97e48787d501461`.
+
+| Experiment | Best checkpoint | Best validation objective | Job status |
+| --- | --- | ---: | --- |
+| Dual MSE | `checkpoint-752` | **0.247712** | COMPLETED |
+| Dual MSE + Margin (`beta=1`) | `checkpoint-564` | **0.492873** | COMPLETED |
+
+**The objective loss values are not directly comparable:** the margin model optimizes an additional loss term. Judge models using accuracy against cost-matched Random and their Accuracy–Token curves.
+
+| Router | NoThinking share | Accuracy | Mean output tokens | Uplift vs budget-matched Random |
+| --- | ---: | ---: | ---: | ---: |
+| Dual MSE | 0% | 78.44% | 2,209.0 | +0.00 pp |
+| Dual MSE | 10% | 77.33% | 2,004.8 | +0.22 pp |
+| Dual MSE | 25% | 75.11% | 1,676.8 | +0.13 pp |
+| **Dual MSE** | **50%** | **72.89%** | **1,294.7** | **+0.39 pp** |
+| **Dual MSE** | **75%** | **71.33%** | **873.5** | **+1.57 pp** |
+| Dual MSE | 100% | 67.78% | 567.6 | +0.00 pp |
+| Dual MSE + Margin | 0% | 78.44% | 2,209.0 | +0.00 pp |
+| Dual MSE + Margin | 10% | 77.33% | 2,015.5 | +0.15 pp |
+| Dual MSE + Margin | 25% | 75.33% | 1,620.1 | +0.72 pp |
+| **Dual MSE + Margin** | **50%** | **72.89%** | **1,179.9** | **+1.13 pp** |
+| Dual MSE + Margin | 75% | 70.22% | 831.7 | +0.73 pp |
+| Dual MSE + Margin | 100% | 67.78% | 567.6 | +0.00 pp |
+
+At **50% NoThinking**, adding Margin holds accuracy at **72.89%** while reducing mean outputs from **1,294.7 to 1,179.9 tokens** (about **8.9%**); matched-Random uplift grows from **+0.39 to +1.13 pp**. At **75% NoThinking**, however, **Dual MSE** has the stronger uplift (**+1.57 vs +0.73 pp**). The margin term therefore **does not consistently dominate** the control.
+
+For the existing Classification baseline, the largest reported validation uplift is **+2.37 pp** at **1,092 tokens** and **73.56% accuracy**. It remains the Route A reference; percentages at equal NoThinking share **must not be treated as matched-budget comparisons**.
+
+### Next decision
+
+Retain both objectives as finished ablations. Do not yet conduct a large margin-`beta` sweep. Prioritize a **frozen DeepSeek prompt embedding + lightweight classifier/probe**, measured under the same strict 3,000/450 protocol. Keep canonical held-out test untouched.
+
+The complete `dual_mse_val.json` and `dual_margin_val.json`, their CSV counterparts, and model/checkpoint files remain on the NTU server. This documentation records the user-supplied job output; **it does not claim that those result files were pushed to GitHub**.
 
 ## 4. Files
 
@@ -155,5 +182,4 @@ not an independent test result.
 - [`scripts/train_modernbert_delta.py`](../scripts/train_modernbert_delta.py)
   - reuses its tested strict label loader and matched-budget curve calculations
 
-**Implementation has been committed, but cannot be claimed GPU-validated until
-the NTU smoke/full Slurm jobs finish.**
+**GPU smoke and full runs are complete (Job 71767).** No independent held-out test has been performed; reported accuracies and uplifts are validation-only.
