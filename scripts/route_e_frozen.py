@@ -373,10 +373,12 @@ def fit(args):
                                  metrics["uplift_pp"]])
     for point in curve:
         m = point["groups"]["overall"]
+        uplift = ("N/A" if m["uplift_pp"] is None
+                  else f"{m['uplift_pp']:+.2f}pp")
         print(f"ROUTE_E_VAL encoder={args.encoder} smoke={int(args.smoke)} "
               f"NT={point['target_nt_fraction']:.0%} "
               f"acc={m['accuracy']:.4%} tokens={m['mean_tokens']:.1f} "
-              f"uplift={m['uplift_pp']:+.2f}pp", flush=True)
+              f"uplift={uplift}", flush=True)
     print(f"{'SMOKE_ONLY' if args.smoke else 'ROUTE_E_FULL_VALIDATION'} "
           f"report={target} auc_diagnostic={result['validation_auc_diagnostic_only']}",
           flush=True)
