@@ -102,7 +102,7 @@ def make_target(row, lam, temperature, soft):
 
 class RouterDataset(torch.utils.data.Dataset):
     def __init__(self, rows, tokenizer, max_len, lam, temperature, soft,
-                 answers=None, max_resp_tokens=1024):
+                 answers=None, max_resp_tokens=1024, answer_scope="correct"):
         self.items = []
         self.skipped_no_answer = 0
         for row in rows:
@@ -113,7 +113,13 @@ class RouterDataset(torch.utils.data.Dataset):
                 continue
             target, raw = make_target(row, lam, temperature, soft)
             response_ids = None
-            if answers is not None and target >= 0.5:
+            # Answer supervision is scoped by *correctness*: the model should
+            # learn to answer well without thinking wherever that is already
+            # possible, not only on the problems the routing target would send to
+            # the fast mode. answer_scope="target" restores the stricter scope.
+            wants_answer = answers is not None and (answer_scope == "correct"
+                                                   or target >= 0.5)
+            if wants_answer:
                 for _k, text, correct in answers.get(row["sample_id"], []):
                     if correct > 0.5:
                         response_ids = tokenizer(text, add_special_tokens=False)["input_ids"]
@@ -265,6 +271,10 @@ def main():
     parser.add_argument("--temperature", type=float, default=0.25)
     parser.add_argument("--hard", action="store_true")
     parser.add_argument("--response-weight", type=float, default=1.0)
+    parser.add_argument("--answer-scope", choices=("correct", "target"), default="correct",
+                        help="Which problems get answer supervision: every problem with a "
+                             "compliant correct answer, or only those the router would route "
+                             "to the fast mode")
     parser.add_argument("--max-resp-tokens", type=int, default=1024)
     parser.add_argument("--epochs", type=int, default=2)
     parser.add_argument("--batch-size", type=int, default=4)
@@ -307,7 +317,8 @@ def main():
 
     common = dict(max_len=args.max_len, lam=args.lam, temperature=args.temperature,
                   soft=not args.hard, max_resp_tokens=args.max_resp_tokens)
-    train_ds = RouterDataset(train_rows, tokenizer, answers=answers, **common)
+    train_ds = RouterDataset(train_rows, tokenizer, answers=answers,
+                             answer_scope=args.answer_scope, **common)
     val_ds = RouterDataset(val_rows, tokenizer, answers=None, **common)
     imitable = sum(1 for x in train_ds.items if x["has_response"])
     print(f"train={len(train_ds)} (imitable answer: {imitable}) val={len(val_ds)} "
@@ -382,6 +393,7 @@ def main():
         "batch_size": args.batch_size, "lr": args.lr, "lora_r": args.lora_r,
         "train_size": len(train_ds), "val_size": len(val_ds),
         "train_with_imitable_answer": imitable,
+        "answer_scope": args.answer_scope,
         "best_val_auc": best["auc"], "best_epoch": best["epoch"],
         **base, **final,
     }

@@ -57,6 +57,11 @@ def main():
     parser.add_argument("--model", type=Path, default=MODEL)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--dtype", default="bfloat16", choices=("float16", "bfloat16"))
+    parser.add_argument("--pooling", default="last", choices=("last", "mean"),
+                        help="last = hidden state at the final prompt token; "
+                             "mean = average over all prompt tokens (standard probe feature)")
+    parser.add_argument("--layers", default="last", choices=("last", "last4"),
+                        help="last = final layer only; last4 = concatenate the last 4 layers")
     args = parser.parse_args()
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -99,9 +104,16 @@ def main():
             out = model(input_ids=input_ids.to(device),
                         attention_mask=attention.to(device),
                         output_hidden_states=True)
-            hidden = out.hidden_states[-1].float()
-            picked = hidden[torch.arange(len(batch), device=device),
-                            (lengths - 1).to(device)]
+            if args.layers == "last":
+                hidden = out.hidden_states[-1].float()
+            else:
+                hidden = torch.cat([h.float() for h in out.hidden_states[-4:]], dim=-1)
+            mask = attention.to(device).unsqueeze(-1).float()
+            if args.pooling == "mean":
+                picked = (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1.0)
+            else:
+                picked = hidden[torch.arange(len(batch), device=device),
+                                (lengths - 1).to(device)]
             features.append(picked.cpu().numpy().astype(np.float16))
             kept_ids.extend(sid for sid, _ in batch)
             if (start // args.batch_size) % 20 == 0:
