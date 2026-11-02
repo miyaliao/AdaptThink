@@ -130,8 +130,9 @@ def score_rows(jobs, workers):
     return [_score_one(job) for job in jobs]
 
 
-def build_labels(selected, records, scores, k):
+def build_labels(selected, records, scores, k, compliant_only=False):
     labels = []
+    dropped_no_compliant = 0
     cursor = 0
     for sample in selected:
         rows = [records[sample["sample_id"]][j] for j in range(k)]
@@ -144,6 +145,13 @@ def build_labels(selected, records, scores, k):
                 raise RuntimeError(f"Invalid token count in {sample['sample_id']}")
         chunk = scores[cursor:cursor + k]
         cursor += k
+        if compliant_only:
+            keep = [i for i, row in enumerate(rows) if row.get("compliant", True)]
+            if not keep:
+                dropped_no_compliant += 1
+                continue
+            rows = [rows[i] for i in keep]
+            chunk = [chunk[i] for i in keep]
         accs = [c[0] for c in chunk]
         preds = [c[1] for c in chunk]
         p_thinking = float(sample["acc_thinking"])
@@ -159,7 +167,7 @@ def build_labels(selected, records, scores, k):
             "p_nothinking": p_nothinking,
             "gain_thinking": gain,
             "k_thinking": int(sample["n_thinking_responses"]),
-            "k_nothinking": k,
+            "k_nothinking": len(rows),
             "mean_tokens_thinking": float(sample["mean_len_thinking"]),
             "mean_tokens_nothinking": mean(r["num_output_tokens"] for r in rows),
             "truncation_thinking": float(sample["clip_ratio_thinking"]),
@@ -170,6 +178,8 @@ def build_labels(selected, records, scores, k):
             "suggested_weight": 1.0 if sample["bucket"] in BOUNDARY_BUCKETS else 0.5,
             "predictions": preds,
         })
+    if compliant_only and dropped_no_compliant:
+        print(f"dropped {dropped_no_compliant} problem(s) with no compliant generation")
     return labels
 
 
@@ -213,6 +223,7 @@ def summarise(labels, scope, manifest_digest, k, files):
         "manifest_sha256": manifest_digest,
         "input_files": files,
         "n_questions": total,
+        "compliant_only": None,
         "k_nothinking": k,
         "bucket_counts": dict(counts),
         "labels": {
@@ -286,6 +297,9 @@ def main():
     parser.add_argument("--all", action="store_true",
                         help="Score the full 3,000 problems instead of the 600-problem pilot")
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--compliant-only", action="store_true",
+                        help="Use only generations that actually skipped thinking "
+                             "(no second <think> block); drop problems without any")
     parser.add_argument("--force", action="store_true", help="Overwrite existing outputs")
     parser.add_argument("--selftest", action="store_true", help="Run the offline logic check")
     args = parser.parse_args()
@@ -318,9 +332,10 @@ def main():
     jobs = [(records[s["sample_id"]][j]["response"], s["answer"])
             for s in selected for j in range(k)]
     scores = score_rows(jobs, args.workers)
-    labels = build_labels(selected, records, scores, k)
+    labels = build_labels(selected, records, scores, k, args.compliant_only)
     summary = summarise(labels, scope, hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
                         k, files)
+    summary["compliant_only"] = args.compliant_only
 
     output_dir.mkdir(parents=True, exist_ok=True)
     with labels_path.open("w", encoding="utf-8") as f:

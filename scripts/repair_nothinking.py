@@ -69,6 +69,17 @@ def last_boxed(text):
     return None
 
 
+def is_compliant(response):
+    """Did the model actually skip thinking? Judged on the ORIGINAL response.
+
+    Compliant means: no second thinking block was opened (no "<think>") and
+    thinking was closed exactly once. Anything else is a protocol violation and
+    its answer is not evidence about NoThinking ability, however the format is
+    repaired for scoring.
+    """
+    return "<think>" not in response and response.count("</think>") == 1
+
+
 def repair(response):
     """Return (repaired_response, format_issue, note)."""
     issues = []
@@ -124,9 +135,12 @@ def main():
                         raise RuntimeError(f"{sample_id} is not in the manifest {args.manifest}")
                     row["answer"] = answers[sample_id]
                     row["problem"] = problems[sample_id]
-                    strict = adapt_think_rm(data_source="", solution_str=row["response"],
+                    # compliance is judged on the ORIGINAL text, before any repair
+                    original = row["response"]
+                    compliant = is_compliant(original)
+                    strict = adapt_think_rm(data_source="", solution_str=original,
                                             ground_truth=row["answer"])
-                    repaired, issue, note = repair(row["response"])
+                    repaired, issue, note = repair(original)
                     if issue:
                         fixed = adapt_think_rm(data_source="", solution_str=repaired,
                                                ground_truth=row["answer"])
@@ -144,6 +158,8 @@ def main():
                     row["acc_strict"] = float(strict["acc"])
                     row["acc_repaired"] = float(fixed["acc"])
                     row["format_issue"] = issue
+                    row["compliant"] = compliant
+                    stats["compliant"] += int(compliant)
                     out.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     config = args.src / "config.json"
@@ -157,6 +173,8 @@ def main():
         "format_issue_generations": stats["format_issue"],
         "format_issue_rate": stats["format_issue"] / max(stats["generations"], 1),
         "rescued_by_repair": stats["rescued"],
+        "compliant_generations": stats["compliant"],
+        "compliance_rate": stats["compliant"] / max(stats["generations"], 1),
         "issue_breakdown": {k.split(":", 1)[1]: v for k, v in stats.items()
                             if k.startswith("issue:")},
     }
