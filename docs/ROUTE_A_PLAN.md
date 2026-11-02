@@ -1,6 +1,6 @@
 # Route A — External Router via ModernBERT
 
-Status: three router objectives evaluated on validation as of **2026-11-02**. Next experiment: **Dual MSE + Margin Loss**. SC4001 deadline: **2026-11-16**.
+Status: three router objectives evaluated on validation as of **2026-11-02**. **Dual MSE and Dual MSE + Margin are implemented, awaiting GPU runs** ([run guide](EXTERNAL_ROUTER_MARGIN.md)). SC4001 deadline: **2026-11-16**.
 
 ## 1. Research question
 
@@ -93,7 +93,7 @@ L_total  = L_dual + beta * L_margin
 - Select checkpoints on validation only; compare accuracy–token curves at **matched budgets** against the three completed methods and Random.
 - If the new objective does not improve over Classification, prioritize **frozen DeepSeek embeddings + a lightweight probe/router** rather than expanding the training set or using test data for tuning.
 
-This experiment is **planned, not yet completed**; do not enter numbers into the result table until evaluated.
+**Implemented, GPU results pending:** [training/evaluation script](../scripts/train_modernbert_margin.py), [single-V100 Slurm script](../scripts/ntu_modernbert_margin.sbatch), and [step-by-step run guide](EXTERNAL_ROUTER_MARGIN.md). Run both Dual MSE and Dual MSE + Margin; do not enter numbers into the result table until evaluated.
 
 ## 6. Code, artifacts, and reproducibility status
 
