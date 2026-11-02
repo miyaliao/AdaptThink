@@ -50,6 +50,13 @@ def main():
         raise RuntimeError("The two grade files do not cover the same task ids")
 
     split = json.loads(args.split.read_text(encoding="utf-8"))
+    # problem text is required by the probe feature extractor
+    problems = {}
+    for dataset, meta in split["source_files"].items():
+        items = json.loads((ROOT / meta["path"]).read_text(encoding="utf-8"))
+        for index in meta["selected_indices"]:
+            problems[f"{dataset}:{index}"] = items[index]["problem"]
+
     grouped = defaultdict(list)
     for task_id in thinking:
         grouped[task_id.rsplit(":", 1)[0]].append(task_id)
@@ -60,6 +67,7 @@ def main():
         dataset = question.split(":")[0]
         rows.append({
             "sample_id": question,
+            "problem": problems[question],
             "dataset": dataset,
             "order_index": position,
             "n_generations": len(ids),

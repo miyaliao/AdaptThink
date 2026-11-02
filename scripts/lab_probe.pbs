@@ -1,0 +1,53 @@
+#!/bin/bash
+#PBS -P ds_ccds_wei.lu
+#PBS -q gpu_ded
+#PBS -l select=1:ncpus=2:ngpus=1:mem=16gb
+#PBS -l walltime=01:00:00
+#PBS -N nt_probe
+
+# Probe router: is "should this problem skip thinking" decodable from the model's
+# own representation? No generation, no answer imitation.
+#
+#   1. extract last-layer hidden states for train (2777) / val (450) / test (485)
+#   2. fit a logistic regression, report AUC on val (and train, for reference)
+#   3. write per-problem p_nt for the curve evaluator
+#
+# Submit:
+#     qsub -v REPO=$PWD,ENV_ACTIVATE=$HOME/activate_nt.sh scripts/lab_probe.pbs
+
+set -euo pipefail
+
+REPO="${REPO:-$HOME/AdaptThink}"
+MODULES="${MODULES:-anaconda/2025 cuda/13.0}"
+ENV_ACTIVATE="${ENV_ACTIVATE:-}"
+
+cd "$REPO"
+for m in $MODULES; do
+  module load "$m" 2>/dev/null || echo "WARNING: module $m not available"
+done
+if [ -n "$ENV_ACTIVATE" ]; then
+  # shellcheck disable=SC1090
+  source "$ENV_ACTIVATE"
+fi
+export PYTHONNOUSERSITE=1
+export TOKENIZERS_PARALLELISM=false
+
+echo "PBS job: ${PBS_JOBID:-local}"
+echo "Node: $(hostname)"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+
+echo "=== features ==="
+python -u scripts/extract_hidden.py \
+  --labels results/router_labels_1p5b_compliant/all_3000_labels.jsonl \
+  --out outputs/hidden/train.npz
+python -u scripts/extract_hidden.py \
+  --labels results/val_450_labels.jsonl --out outputs/hidden/val.npz
+python -u scripts/extract_hidden.py \
+  --labels results/test_485_labels.jsonl --out outputs/hidden/test.npz
+
+echo "=== probe ==="
+python -u scripts/train_probe.py \
+  --train outputs/hidden/train.npz --val outputs/hidden/val.npz \
+  --test outputs/hidden/test.npz --out-dir results
+
+echo "PROBE_PIPELINE_DONE"
