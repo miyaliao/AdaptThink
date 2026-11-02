@@ -73,6 +73,17 @@ def load_protocol():
     return train, val, overlapping_texts
 
 
+def choose_smoke_rows(train, val):
+    # Ensure the tiny probe training split contains both classes without
+    # using any validation labels to choose training questions.
+    pos = [r for r in train if r["p_n"] >= r["p_t"]][:16]
+    neg = [r for r in train if r["p_n"] < r["p_t"]][:16]
+    if len(pos) != 16 or len(neg) != 16:
+        raise ValueError("Cannot form a balanced 32-question smoke subset")
+    chosen_ids = {r["sample_id"] for r in pos + neg}
+    return [r for r in train if r["sample_id"] in chosen_ids], val[:24]
+
+
 def default_output(encoder, smoke):
     p = ROOT / "outputs/route_e" / encoder
     return p / "smoke" if smoke else p / "full"
@@ -153,6 +164,7 @@ def extract_split(model, tokenizer, encoder, rows, labels_path, destination,
         "schema": "route_e_features_v1", "encoder": encoder,
         "model": model_id, "torch_dtype": str(next(model.parameters()).dtype),
         "pooling": "cls" if encoder == "modernbert" else "last_prompt_token",
+        "hf_model_revision": getattr(model.config, "_commit_hash", None),
         "prompt": "raw_problem" if encoder == "modernbert" else "user_chat_template_generation_prefix",
         "max_length": max_length, "batch_size": batch_size,
         "labels_sha256": sha256(labels_path),
@@ -182,6 +194,8 @@ def extract(args):
         raise RuntimeError("Feature extraction requires 1 GPU; submit the Slurm job.")
     torch.manual_seed(args.seed)
     train, val, _ = load_protocol()
+    if args.smoke:
+        train, val = choose_smoke_rows(train, val)
     model_id = args.model or DEFAULT_MODELS[args.encoder]
     if args.encoder == "deepseek" and not Path(model_id).is_dir():
         raise FileNotFoundError(f"DeepSeek local checkpoint not found: {model_id}")
@@ -200,8 +214,6 @@ def extract(args):
         parameter.requires_grad_(False)
     selected = (("train", train, TRAIN), ("val", val, VAL))
     for name, rows, path in selected:
-        if args.smoke:
-            rows = rows[:32] if name == "train" else rows[:24]
         out = default_output(args.encoder, args.smoke) / f"{name}.npz"
         extract_split(model, tokenizer, args.encoder, rows, path, out,
                       args.max_length, args.batch_size, model_id, args.overwrite, args.smoke)
@@ -288,14 +300,15 @@ def fit(args):
     from train_modernbert_delta import curve_point, endpoints
     train, val, overlaps = load_protocol()
     if args.smoke:
-        train, val = train[:32], val[:24]
+        train, val = choose_smoke_rows(train, val)
     source = default_output(args.encoder, args.smoke)
     Xtr, trmeta = read_features(source/"train.npz", train, TRAIN_SHA256,
                                 args.encoder, args.smoke)
     Xva, vameta = read_features(source/"val.npz", val, VAL_SHA256,
                                 args.encoder, args.smoke)
-    if trmeta["model"] != vameta["model"] or trmeta["pooling"] != vameta["pooling"]:
-        raise ValueError("Train/val extraction model or pooling mismatch")
+    for field in ("model", "pooling", "prompt", "max_length", "torch_dtype"):
+        if trmeta[field] != vameta[field]:
+            raise ValueError(f"Train/val extraction {field} mismatch")
     ytr = np.asarray([int(r["p_n"] >= r["p_t"]) for r in train], dtype=np.float32)
     yva = np.asarray([int(r["p_n"] >= r["p_t"]) for r in val], dtype=np.float32)
     if len(set(ytr)) != 2:
