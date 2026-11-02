@@ -36,6 +36,9 @@ echo "PBS job: ${PBS_JOBID:-local}"
 echo "Node: $(hostname)"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
+echo "=== test labels (needed for features) ==="
+python -u scripts/build_test_labels.py
+
 echo "=== features ==="
 python -u scripts/extract_hidden.py \
   --labels results/router_labels_1p5b_compliant/all_3000_labels.jsonl \
