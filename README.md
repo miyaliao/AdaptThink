@@ -137,11 +137,48 @@ INPUT_DIR=outputs/nothinking_train_seed42,SCOPE=all scripts/lab_score_labels.pbs
 qsub -v REPO=$PWD,ENV_ACTIVATE=$HOME/activate_nt.sh scripts/lab_train_lora.pbs
 ```
 
-Committed products: `results/router_labels_1p5b/all_3000_labels.jsonl` (the labels),
-`all_3000_summary.json` (per-bucket stats and proxy calibration), and
-`checksums.sha256` (hashes of the raw generation shards, which stay out of Git).
-The raw shards are reproducible from the commands above; the frozen manifest hash
+Committed products:
+
+| File | What it is |
+| --- | --- |
+| `results/router_labels_1p5b/all_3000_labels.jsonl` | 3,000 training labels, one JSON object per problem |
+| `results/router_labels_1p5b/all_3000_summary.json` | per-bucket stats and proxy calibration |
+| `results/val_450_labels.jsonl` | the 450-question validation labels used to pick thresholds |
+| `results/val_450_summary.json` | validation accuracy/token/length summary |
+
+Label fields: `sample_id`, `problem`, `answer`, `bucket`, `p_thinking`,
+`p_nothinking`, `gain_thinking` (= p_thinking - p_nothinking), `mean_tokens_thinking`,
+`mean_tokens_nothinking`, `truncation_*`, `label`, `label_margin`, `label_soft`,
+`suggested_weight`, `predictions`. **lambda is not stored in the file** - it is a
+training hyperparameter applied on top of these fields.
+
+The raw generation shards stay out of Git (~50 MB, `outputs/`); they are
+reproducible from the commands above and their hashes belong in
+`results/router_labels_1p5b/checksums.sha256`. The frozen manifest hash
 `9c71b21f3272` pins which problems were used.
+
+## Environment notes (GAAS H200, validated 2026-11-01)
+
+Versions that work together: Python 3.10, torch **2.6.0+cu124**, transformers
+**4.51.2**, vllm **0.8.5**, `huggingface_hub` **0.30.2**, peft **0.14.0**,
+`accelerate` **1.3.0**, math-verify 0.9.0, sympy 1.13.1, pylatexenc 2.11.
+
+Four traps that each cost a job, in the order they bite:
+
+1. **`huggingface_hub` must stay below 1.0.** `pip install -U huggingface_hub`
+   (needed once to download the model) installs 2.x and breaks `transformers` with
+   `huggingface-hub>=0.30.0,<1.0 is required`. Pin 0.30.2 afterwards.
+2. **`CUDA_VISIBLE_DEVICES` is a GPU UUID on this cluster** (`GPU-a6db552a-...`) and
+   vLLM 0.8.5 calls `int()` on it in two places. `gen_val_outputs.py` patches
+   `vllm.platforms.cuda.device_id_to_physical_device_id` before creating the engine,
+   and the PBS scripts export `VLLM_ATTENTION_BACKEND=FLASH_ATTN`, which skips the
+   capability query. Do both; either alone is fragile.
+3. **`peft` needs `accelerate`**, and both must be installed with `--no-deps` so pip
+   does not quietly upgrade torch/transformers:
+   `python -m pip install --no-cache-dir --no-deps "peft==0.14.0" "accelerate==1.3.0"`.
+4. **PBS writes job stdout only after the job ends** on this cluster, so `tail -f
+   nt_*.o<jobid>` fails while the job runs. Watch progress with
+   `wc -l outputs/.../*.jsonl` instead.
 
 ## Current Work: AdaptThink Baseline Evaluation
 
