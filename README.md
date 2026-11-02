@@ -93,6 +93,23 @@ Distribution over the 3,000 problems: **1,236 NoThinking / 1,764 Thinking**, 795
 23.7% of the *reference* Thinking generations hit the 16,384 cap, so `p_thinking` is a
 lower bound; the evaluation uses the same cap, so label and evaluation share a protocol.
 
+**Two label files: strict and repaired.** 23.4% of the generated NoThinking answers
+were rejected by the scorer for *formatting* rather than for being wrong (1,500 opened
+a second `<think>` block, 757 closed thinking twice, 552 answered without a
+`\boxed{}`). Both versions are kept, because the difference is itself a result:
+
+| Directory | Rule | p(NoThinking) | NoThinking / Thinking labels |
+| --- | --- | ---: | --- |
+| `results/router_labels_1p5b/` | strict: any format violation scores 0 | 0.280 | 1,236 / 1,764 |
+| `results/router_labels_1p5b_repaired/` | repair the scorable part, then score | **0.343** | 1,458 / 1,542 |
+
+Repair (`scripts/repair_nothinking.py`) keeps everything after the last `</think>`,
+restores a missing boxed answer from the model's own text, and never invents an
+answer. It rescued **754** correct answers, which moves the measured
+"Thinking minus NoThinking" gap from **17.3 to 11.0 points**: about a third of the
+apparent gap was a measurement artefact. Training uses the repaired file; the strict
+file documents what the unmodified protocol would have reported.
+
 **Choosing lambda (the token price).** The group's objective is `max accuracy s.t. mean
 output tokens <= B`, so the per-problem optimum is not "route NoThinking when it is at
 least as accurate" (that is the B = infinity case) but

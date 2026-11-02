@@ -1,0 +1,56 @@
+#!/bin/bash
+#PBS -P ds_ccds_wei.lu
+#PBS -q gpu_ded
+#PBS -l select=1:ncpus=2:ngpus=1:mem=16gb
+#PBS -l walltime=02:00:00
+#PBS -N nt_router
+
+# One job: rebuild the validation labels (with NoThinking format repair) and train
+# the router on the repaired training labels. Deliberately minimal resources
+# (6 cores, 16 GB) so a 1-GPU slot is easier to get under the project quota.
+#
+# Submit:
+#     qsub -v REPO=$PWD,ENV_ACTIVATE=$HOME/activate_nt.sh scripts/lab_train_final.pbs
+#
+# Output: outputs/lora_router_sft_lam002/ (adapter + train_report.json),
+#         results/val_450_labels.jsonl (rebuilt)
+
+set -euo pipefail
+
+REPO="${REPO:-$HOME/AdaptThink}"
+MODULES="${MODULES:-anaconda/2025 cuda/13.0}"
+ENV_ACTIVATE="${ENV_ACTIVATE:-}"
+LAM="${LAM:-0.02}"
+EPOCHS="${EPOCHS:-2}"
+LR="${LR:-1e-4}"
+RESP_WEIGHT="${RESP_WEIGHT:-1.0}"
+SUFFIX="${SUFFIX:-lam002}"
+
+cd "$REPO"
+for m in $MODULES; do
+  module load "$m" 2>/dev/null || echo "WARNING: module $m not available"
+done
+if [ -n "$ENV_ACTIVATE" ]; then
+  # shellcheck disable=SC1090
+  source "$ENV_ACTIVATE"
+fi
+export PYTHONNOUSERSITE=1
+export TOKENIZERS_PARALLELISM=false
+
+echo "PBS job: ${PBS_JOBID:-local}"
+echo "Node: $(hostname)"
+echo "lam=$LAM epochs=$EPOCHS lr=$LR resp_weight=$RESP_WEIGHT suffix=$SUFFIX"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+
+echo "=== step 1/2: rebuild validation labels (with format repair) ==="
+python -u scripts/build_val_labels.py
+
+echo "=== step 2/2: train router (decision + answer SFT) ==="
+python -u scripts/train_router_sft.py \
+  --labels results/router_labels_1p5b_repaired/all_3000_labels.jsonl \
+  --val-labels results/val_450_labels.jsonl \
+  --nothinking-dir outputs/nothinking_train_repaired \
+  --lam "$LAM" --epochs "$EPOCHS" --lr "$LR" --response-weight "$RESP_WEIGHT" \
+  --output-dir "outputs/lora_router_sft_${SUFFIX}"
+
+echo "ROUTER_TRAIN_DONE outputs/lora_router_sft_${SUFFIX}"
