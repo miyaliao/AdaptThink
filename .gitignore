@@ -15,3 +15,6 @@ __pycache__/
 # Slurm logs
 *.out
 *.err
+
+# Personal Slurm experiment scripts at repository root (not tracked)
+/*.sbatch
