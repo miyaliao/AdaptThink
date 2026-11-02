@@ -93,7 +93,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--src", type=Path, default=SRC)
     parser.add_argument("--out-dir", type=Path, default=OUT)
+    parser.add_argument("--manifest", type=Path,
+                        default=ROOT / "data/splits/sft_train_3000_seed42.json",
+                        help="Generation rows carry no 'answer'; it is looked up here")
     args = parser.parse_args()
+
+    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+    answers = {s["sample_id"]: s["answer"] for s in manifest["samples"]}
+    problems = {s["sample_id"]: s["problem"] for s in manifest["samples"]}
 
     files = sorted(args.src.glob("shard*of*.jsonl")) or sorted(args.src.glob("nothinking.jsonl"))
     if not files:
@@ -112,6 +119,11 @@ def main():
                     if not line.strip():
                         continue
                     row = json.loads(line)
+                    sample_id = row["sample_id"]
+                    if sample_id not in answers:
+                        raise RuntimeError(f"{sample_id} is not in the manifest {args.manifest}")
+                    row["answer"] = answers[sample_id]
+                    row["problem"] = problems[sample_id]
                     strict = adapt_think_rm(data_source="", solution_str=row["response"],
                                             ground_truth=row["answer"])
                     repaired, issue, note = repair(row["response"])
