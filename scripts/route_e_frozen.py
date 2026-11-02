@@ -247,7 +247,9 @@ def train_logistic(X, y, l2, max_iter):
         return loss
     optimizer.step(closure)
     with torch.no_grad():
-        final_loss = float(closure().detach())
+        logits = Z @ weight + bias
+        final_loss = float(torch.nn.functional.binary_cross_entropy_with_logits(
+            logits, target) + l2 * weight.square().sum())
         w = weight.numpy().copy()
         b = float(bias)
     return {"weight": w, "bias": b, "mean": mean, "scale": scale,
