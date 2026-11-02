@@ -1,0 +1,108 @@
+{
+  "scope": "all_3000",
+  "label_method": "released Thinking K>=16 reference accuracy joined with locally generated 16K NoThinking K samples; original adapt_think_rm",
+  "label_noise_warning": "Empirical success rates; K=4 NoThinking is much noisier than K>=16 Thinking",
+  "selection_warning": "Training manifest stratified by released Thinking accuracy; not population-representative",
+  "manifest_sha256": "9c71b21f32728c15ad45ddea773d728939d7b13266f80c18432e595a01422399",
+  "input_files": [
+    "nothinking.jsonl"
+  ],
+  "n_questions": 3000,
+  "k_nothinking": 4,
+  "bucket_counts": {
+    "never": 600,
+    "rare": 600,
+    "sometimes": 600,
+    "usually": 600,
+    "always": 600
+  },
+  "labels": {
+    "nothinking": 1458,
+    "thinking": 1542,
+    "nothinking_margin": 1887
+  },
+  "means": {
+    "p_thinking": 0.4532848214285714,
+    "p_nothinking": 0.3428333333333333,
+    "gain_thinking": 0.1104514880952381,
+    "mean_tokens_thinking": 8847.02995079365,
+    "mean_tokens_nothinking": 2864.94375,
+    "truncation_thinking": 0.236890376984127,
+    "truncation_nothinking": 0.059
+  },
+  "comparison": {
+    "thinking_better": 1542,
+    "equal": 825,
+    "nothinking_better": 633
+  },
+  "per_bucket": {
+    "always": {
+      "n": 600,
+      "p_thinking": 0.98265625,
+      "p_nothinking": 0.7625,
+      "frac_nothinking_worse": 0.5083333333333333,
+      "frac_nothinking_better": 0.08333333333333333,
+      "frac_tie": 0.4083333333333333,
+      "mean_tokens_thinking": 3462.049736111111,
+      "mean_tokens_nothinking": 989.1675,
+      "truncation_nothinking": 0.005
+    },
+    "never": {
+      "n": 600,
+      "p_thinking": 0.0,
+      "p_nothinking": 0.07291666666666667,
+      "frac_nothinking_worse": 0,
+      "frac_nothinking_better": 0.17666666666666667,
+      "frac_tie": 0.8233333333333334,
+      "mean_tokens_thinking": 11282.1564484127,
+      "mean_tokens_nothinking": 3045.7595833333335,
+      "truncation_nothinking": 0.07291666666666667
+    },
+    "rare": {
+      "n": 600,
+      "p_thinking": 0.14037202380952382,
+      "p_nothinking": 0.13375,
+      "frac_nothinking_worse": 0.6416666666666667,
+      "frac_nothinking_better": 0.305,
+      "frac_tie": 0.05333333333333334,
+      "mean_tokens_thinking": 11663.252256944445,
+      "mean_tokens_nothinking": 4108.31875,
+      "truncation_nothinking": 0.10875
+    },
+    "sometimes": {
+      "n": 600,
+      "p_thinking": 0.40317708333333335,
+      "p_nothinking": 0.27791666666666665,
+      "frac_nothinking_worse": 0.66,
+      "frac_nothinking_better": 0.285,
+      "frac_tie": 0.055,
+      "mean_tokens_thinking": 10425.122447916667,
+      "mean_tokens_nothinking": 3668.9554166666667,
+      "truncation_nothinking": 0.07625
+    },
+    "usually": {
+      "n": 600,
+      "p_thinking": 0.74021875,
+      "p_nothinking": 0.46708333333333335,
+      "frac_nothinking_worse": 0.76,
+      "frac_nothinking_better": 0.205,
+      "frac_tie": 0.035,
+      "mean_tokens_thinking": 7402.568864583333,
+      "mean_tokens_nothinking": 2512.5175,
+      "truncation_nothinking": 0.03208333333333333
+    }
+  },
+  "proxy_calibration": {
+    "proxy_rule": "p_thinking >= 0.875",
+    "agreement": 0.4856666666666667,
+    "confusion": {
+      "tp": 324,
+      "fp": 409,
+      "tn": 1133,
+      "fn": 1134
+    },
+    "precision_nothinking": 0.44201909959072305,
+    "recall_nothinking": 0.2222222222222222,
+    "proxy_would_mislabel": 1543
+  }
+}

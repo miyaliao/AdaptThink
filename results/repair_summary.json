@@ -1,0 +1,21 @@
+{
+  "generations": 12000,
+  "strict_accuracy": 0.28,
+  "repaired_accuracy": 0.3428333333333333,
+  "format_issue_generations": 2809,
+  "format_issue_rate": 0.23408333333333334,
+  "rescued_by_repair": 754,
+  "compliant_generations": 9743,
+  "compliance_rate": 0.8119166666666666,
+  "issue_breakdown": {
+    "<think> present": 7,
+    "multiple </think>": 750,
+    "no boxed answer": 552,
+    "multiple </think>; <think> present": 1033,
+    "<think> present; no boxed answer": 439,
+    "multiple </think>; boxed outside final segment": 3,
+    "multiple </think>; <think> present; boxed outside final segment": 20,
+    "multiple </think>; <think> present; no boxed answer": 1,
+    "multiple </think>; no boxed answer": 4
+  }
+}
