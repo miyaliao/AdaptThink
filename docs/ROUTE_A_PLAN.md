@@ -1,6 +1,6 @@
 # Route A — External Router via ModernBERT
 
-Status: **five Router objectives evaluated on validation as of 2026-11-02**. Dual MSE and Dual MSE + Margin (beta=1) completed in NTU Slurm job **71767** ([experiment details](EXTERNAL_ROUTER_MARGIN.md)); **Classification remains the strongest observed validation Router**. SC4001 deadline: **2026-11-16**.
+Status: **five Router objectives evaluated on validation as of 2026-11-02**. Dual MSE and Dual MSE + Margin (beta=1) completed in NTU Slurm job **71767**; **Classification remains the strongest observed validation Router**. SC4001 deadline: **2026-11-16**.
 
 ## 1. Research question
 
@@ -107,9 +107,68 @@ The **Dual MSE-only control** isolates the BCE → MSE change from the added mar
 
 **Decision:** keep all five approaches as baselines. Do not launch a large margin-β sweep now. Next investigate **frozen DeepSeek-R1-Distill-Qwen-1.5B prompt hidden-state embeddings with a lightweight classifier/probe**, and compare against ModernBERT on the **same original strict training/validation protocol**, avoiding the teammate's repaired/compliant data during this ablation. Report Router overhead separately. Neither the canonical test split nor any test labels should be used for tuning.
 
-See [experiment details and job results](EXTERNAL_ROUTER_MARGIN.md), [training/evaluation script](../scripts/train_modernbert_margin.py), and [single-V100 Slurm script](../scripts/ntu_modernbert_margin.sbatch).
+Implementation: [training/evaluation script](../scripts/train_modernbert_margin.py) and [single-V100 Slurm script](../scripts/ntu_modernbert_margin.sbatch). Job 71767 completed in 00:07:45 (exit 0:0); Dual MSE best `checkpoint-752` (`eval_loss=0.247712`) and Dual Margin best `checkpoint-564` (`eval_loss=0.492873`). Checkpoint selection used each objective's own validation loss, so these two numeric losses are not directly comparable.
 
-## 6. Code, artifacts, and reproducibility status
+## 6. Reproducing Route A experiments on NTU TC1
+
+Full-fine-tuning environment: `answerdotai/ModernBERT-base`, FP16, one V100-32GB; learning rate `2e-5`, batch 16, 5 epochs, max input 512, seed 42. Dual MSE and Dual MSE + Margin also use weight decay 0.01, warmup ratio 0.1, linear schedule, and select the lowest-validation-objective checkpoint. Both predict bounded probabilities via a sigmoid over two logits; the NoThinking decision selects the lowest predicted `pT - pN` at each target share. The earlier Delta Regression uses one output and MSE.
+
+**Original strict label data (do not substitute repaired/compliant files).**
+
+- Training: `results/router_labels_1p5b/all_3000_labels.jsonl` (3,000 questions), SHA256 `761dcbb6338de1a3c71def382089c83e8024e0e55af6334dd974963e8d7e0f2c`.
+- Validation: `results/val_450_labels.jsonl` (450 questions), SHA256 `4c1e984d3744cc089dcc963a30af0ef3d1ed9808c4bfd245a97e48787d501461`. Use `p_nothinking_strict` when present.
+- GitHub `main` no longer tracks the original strict training JSONL; it was retained in historical commit `b812deda`. Job 71767 used the original file restored on the server. `results/router_labels_1p5b_repaired/` (3,000) and `results/router_labels_1p5b_compliant/` (2,777) are **different label protocols**, not interchangeable Route A inputs.
+
+If restoring the original file is necessary, first check whether it already exists. Download it from the historical commit into a temporary path and verify both count and checksum **before replacing anything**:
+
+```bash
+cd /tc1home/UG/n2602710a/AdaptThink
+mkdir -p results/router_labels_1p5b
+curl -fL --retry 3 \
+  https://raw.githubusercontent.com/miyaliao/AdaptThink/b812deda186eac132b57b9fe3ebce9603135ad45/results/router_labels_1p5b/all_3000_labels.jsonl \
+  -o results/router_labels_1p5b/all_3000_labels.jsonl.tmp
+wc -l results/router_labels_1p5b/all_3000_labels.jsonl.tmp
+sha256sum results/router_labels_1p5b/all_3000_labels.jsonl.tmp
+# Expected: 3000 lines and SHA256 above. If verified, then:
+mv -i results/router_labels_1p5b/all_3000_labels.jsonl.tmp \
+  results/router_labels_1p5b/all_3000_labels.jsonl
+```
+
+The restoration command above is only needed if the server-local strict file is missing. For a normal re-run (inspect `git status` before pulling to protect untracked local files):
+
+```bash
+cd /tc1home/UG/n2602710a/AdaptThink
+git status --short
+git pull --ff-only origin main
+source .venv/bin/activate
+
+# CPU checks
+python scripts/train_modernbert_delta.py --self-test
+python scripts/train_modernbert_delta.py --check-data
+python scripts/train_modernbert_margin.py --self-test
+python scripts/train_modernbert_margin.py --check-data
+
+# One GPU smoke, then full training (submit only one single-GPU job at a time)
+sbatch --export=ALL,DELTA_SMOKE=1 scripts/ntu_modernbert_delta.sbatch
+sbatch --export=ALL,MARGIN_SMOKE=1 scripts/ntu_modernbert_margin.sbatch
+# Once the relevant smoke succeeds:
+sbatch scripts/ntu_modernbert_delta.sbatch
+sbatch scripts/ntu_modernbert_margin.sbatch
+```
+
+The Margin Slurm wrapper runs `dual_mse` then `dual_margin` sequentially on the *same GPU*; do not run the two full commands concurrently under the one-GPU quota. To rerun only one mode, set `MARGIN_MODE=dual_mse` or `MARGIN_MODE=dual_margin`. The smoke runs use separate `*_smoke` folders and must never be reported as full validation.
+
+After training, the saved validation predictions can be replayed on CPU without generating DeepSeek answers:
+
+```bash
+python scripts/train_modernbert_delta.py --eval-only
+python scripts/train_modernbert_margin.py --mode dual_mse --eval-only
+python scripts/train_modernbert_margin.py --mode dual_margin --eval-only
+```
+
+Each experiment stores its best checkpoint and `validation_predictions.jsonl` under `outputs/external_modernbert/{delta,dual_mse,dual_margin}/`, with compact Accuracy–Token JSON and CSV under `results/external_modernbert/`. The saved model weights remain on the NTU server and are not tracked in GitHub. For the Margin experiments, source hashes, selected checkpoint, objective and training history are recorded in `run_metadata.json`. All measured output-token costs exclude Router inference overhead; test remains sealed.
+
+## 7. Code, artifacts, and reproducibility status
 
 | Artifact | Path / status |
 | --- | --- |
@@ -119,7 +178,6 @@ See [experiment details and job results](EXTERNAL_ROUTER_MARGIN.md), [training/e
 | Classification / Dual comparison | `results/external_modernbert/comparison_val.json` — **not found on GitHub main as of this review** |
 | Delta training | `scripts/train_modernbert_delta.py` — committed |
 | Delta Slurm job | `scripts/ntu_modernbert_delta.sbatch` — committed |
-| Delta documentation | `docs/EXTERNAL_ROUTER_DELTA.md` — committed |
 | Delta best model | `outputs/external_modernbert/delta/best_model/` — server-local artifact |
 | Delta predictions | `outputs/external_modernbert/delta/validation_predictions.jsonl` — server-local artifact |
 | Delta accuracy–token evaluation | `results/external_modernbert/delta_val.json`, `delta_val.csv` — reported server-local; not found on GitHub main as of this review |
