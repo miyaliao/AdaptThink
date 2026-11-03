@@ -8,7 +8,8 @@ on:
       - scripts/route_e_token_aware.py
       - scripts/test_route_e_token_aware_integration.py
       - scripts/route_e_cost_only.py
-      - scripts/test_route_e_cost_only.py
+      - scripts/test_route_e_cost_only.py scripts/route_e_allocation_decomposition.py
+      - scripts/route_e_allocation_decomposition.py
       - scripts/route_e_frozen.py
       - scripts/route_e_prompt_ablation.py
       - scripts/route_e_equal_budget.py
@@ -46,3 +47,8 @@ jobs:
           export OPENBLAS_NUM_THREADS=2
           python scripts/route_e_cost_only.py self-test
           python scripts/test_route_e_cost_only.py
+
+      - name: Experiment 1B allocation accounting self-test
+        run: |
+          export OPENBLAS_NUM_THREADS=2
+          python scripts/route_e_allocation_decomposition.py self-test
