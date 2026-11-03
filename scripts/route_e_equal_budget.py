@@ -164,7 +164,7 @@ def linear_bracket(curve, budget):
 def verify_classification_50pct(curve, expected_accuracy=331/450,
                                 expected_tokens=1092.0,
                                 accuracy_tolerance_pp=0.03,
-                                token_tolerance=2.0):
+                                token_tolerance=2.0, emit_log=True):
     """Reproduce the original Route A 50%-NT result from the 450 raw scores.
 
     With N=450, top-k index 225 is precisely 50% NoThinking.
@@ -189,11 +189,12 @@ def verify_classification_50pct(curve, expected_accuracy=331/450,
             "Check the selected score field, score direction, strict "
             "validation ID set, checkpoint, and tie-breaking. "
             "Do not interpret a dense FT comparison until fixed.")
-    print("FT_CLASSIFICATION_50PCT_PASS "
-          f"nt=225/450 accuracy={measured_acc_pp:.4f}% "
-          f"tokens={point['tokens']:.3f} "
-          f"accuracy_error_pp={acc_error_pp:+.4f} "
-          f"token_error={token_error:+.3f}", flush=True)
+    if emit_log:
+        print("FT_CLASSIFICATION_50PCT_PASS "
+              f"nt=225/450 accuracy={measured_acc_pp:.4f}% "
+              f"tokens={point['tokens']:.3f} "
+              f"accuracy_error_pp={acc_error_pp:+.4f} "
+              f"token_error={token_error:+.3f}", flush=True)
     return {
         "verified": True,
         "n_nothinking": 225,
@@ -383,7 +384,7 @@ def self_test():
     check = verify_classification_50pct(
         ordered + [ordered[-1]] * 448,
         expected_accuracy=ordered[-1]["accuracy"],
-        expected_tokens=ordered[-1]["tokens"])
+        expected_tokens=ordered[-1]["tokens"], emit_log=False)
     assert check["verified"]
     # Verify alternate score orientation yields same sorted policy.
     assert dense_curve(rows, {"a": 0., "b": 1.}) == dense_curve(
