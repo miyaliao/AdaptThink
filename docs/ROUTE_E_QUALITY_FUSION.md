@@ -1,6 +1,6 @@
 # Route E / P2 — Experiment 3: Frozen P1 Logistic Quality + Predicted Cost
 
-**Status:** implementation and synthetic 450-row CI tests passed; real strict validation pending. 2026-11-03.
+**Status:** first full strict 450-row validation replay completed; research conclusions exploratory. 2026-11-03.
 Parent protocol: [ROUTE_E_TOKEN_AWARE.md](ROUTE_E_TOKEN_AWARE.md).
 
 ## Scientific question
@@ -56,3 +56,37 @@ New isolated directory: results/route_e/quality_head/experiment3/
 Key log markers: QUALITY_FUSION_SELFTEST_PASS, QUALITY_FUSION_SOURCE_PASS, QUALITY_FUSION_TRAIN_SCALE, QUALITY_FUSION_BUDGET, QUALITY_FUSION_PREDICTED_BUDGET, QUALITY_FUSION_DONE.
 
 Interpretation: F consistently beating D and E would support complementary quality/cost ranking information for these fixed heads. F matching P1 or E indicates weaker incremental cost or quality contribution respectively. All inferences remain strict validation-only and must acknowledge multiple comparisons and distribution shift.
+
+## 6. First strict validation results (2026-11-03)
+
+Operator log checks: `QUALITY_FUSION_SELFTEST_PASS`, `QUALITY_FUSION_SOURCE_PASS strict_val=450 lambda=0.0500 max_p1_score_error=7.73e-08`; train-only scale **0.074770**, offset **0.132026**, training Ridge predicted quality SD **0.194972**.
+
+### Exploratory actual-token equal-budget accuracy
+
+| Mean generated tokens | E Cost-only | D Ridge + Cost | F Logistic + Cost | Frozen P1 Logistic | F−D (pp) | Nominal 95% CI for F−D (pp) |
+| ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 900 | 74.44% | 72.00% | 74.44% | 70.67% | +2.44 | [+0.22, +4.67] |
+| 1,100 | 75.11% | 73.35% | 74.89% | 74.22% | +1.54 | [−0.24, +3.53] |
+| 1,300 | 75.56% | 75.78% | 75.11% | 75.33% | −0.67 | [−2.44, +1.11] |
+| 1,500 | 75.56% | 75.78% | 75.36% | 76.44% | −0.42 | [−2.00, +1.17] |
+| 1,700 | 75.97% | 77.33% | 76.67% | 76.89% | −0.67 | [−2.22, +0.89] |
+| 1,900 | 77.56% | 77.78% | 77.11% | 76.67% | −0.67 | [−1.78, +0.22] |
+| 2,100 | 78.00% | 78.05% | 77.99% | 77.78% | −0.05 | [−0.89, +0.78] |
+
+F reproduces E's accuracy at 900, is slightly behind E at 1,100, and trails D from 1,300 onward. At only the 900-token point is F−D's nominal 95% paired interval wholly positive; this is exploratory and **not multiple-comparison adjusted**. Thus replacing the quality signal improves neither the full curve nor high-budget accuracy consistently.
+
+### Predicted-only budget diagnostic: actual tokens / accuracy
+
+| Requested tokens | E Cost-only | D Ridge + Cost | F Logistic + Cost |
+| ---: | --- | --- | --- |
+| 900 | 764.3 / 73.78% | 811.3 / 71.55% | 778.3 / 73.02% |
+| 1,100 | 872.3 / 74.00% | 955.6 / 72.00% | 931.4 / 74.28% |
+| 1,300 | 1,037.7 / 74.89% | 1,104.6 / 73.47% | 1,103.4 / 74.89% |
+| 1,500 | 1,245.6 / 75.33% | 1,265.8 / 75.08% | 1,234.8 / 75.11% |
+| 1,700 | 1,387.4 / 75.56% | 1,421.8 / 76.00% | 1,415.0 / 75.71% |
+| 1,900 | 1,483.4 / 75.66% | 1,546.9 / 76.67% | 1,545.1 / 75.33% |
+| 2,100 | 1,677.9 / 75.78% | 1,691.8 / 77.33% | 1,669.0 / 76.67% |
+
+All methods miss the requested budget due to systematic predicted-cost calibration bias. Accuracy comparisons at identical *requested* budgets are **not** exactly cost-matched if realized tokens differ. Changing the quality score alone does not fix this limitation.
+
+**Conclusion:** A previously strong classification preference signal is not automatically a stronger combined quality-cost signal. The train-only affine normalization is not success-rate calibration and a fixed mixing coefficient may be suboptimal. Preserve these observations as negative/conditional results; do not retune mixing weights on the same validation set and present the resulting improvement as held-out evidence. The server-side comparison.json with subgroup details is the canonical artifact; this summary transcribes operator logs.
