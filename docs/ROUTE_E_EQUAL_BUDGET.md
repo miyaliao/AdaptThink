@@ -1,7 +1,9 @@
 # Route E — Compare at equal generated-token budgets
 
-Status: **CPU analysis implementation prepared; server-local score files
-not accessible through GitHub and analysis has not been executed on TC1**.
+Status (2026-11-03): **CPU analysis run completed on NTU TC1** using
+all 450 validation predictions for Full FT Classification, P0, P1, and P2.
+The independent 50%-NoThinking Classification reproduction gate was added
+after the analysis and is **pending verification on the server**.
 
 Prior context:
 - [Route A full-fine-tuned Classification](ROUTE_A_PLAN.md) has full
@@ -88,7 +90,7 @@ find outputs/external_modernbert results/external_modernbert -type f \
 
 # Hypothetical case (only if JSONL actually contains this field):
 python scripts/route_e_equal_budget.py \
-  --classification-scores outputs/external_modernbert/classification/validation_predictions.jsonl \
+  --classification-scores outputs/external_modernbert/classification/val_predictions.jsonl \
   --classification-score-field predicted_p_nothinking \
   --classification-score-direction higher_nt
 
@@ -120,7 +122,75 @@ Once true scores are supplied, it prints:
 
 `FT_CLASSIFICATION_SOURCE=DENSE_SCORES`.
 
-## Interpreting preliminary six-point approximation
+## Current dense four-Router validation comparison (2026-11-03)
+
+The user executed the dense comparison on the NTU server with full
+450-question FT Classification predictions:
+`FT_CLASSIFICATION_SOURCE=DENSE_SCORES`.
+
+The [Route A / E report](ROUTE_A_PLAN.md#8-route-e-follow-up-frozen-representations-and-prompt-prefix-ablation-2026-11-03)
+contains the **unified Accuracy–Token chart** and complete seven-budget
+table. Figure source is stored as an
+[SVG](figures/route_a_e_equal_budget_20261103.svg).
+At budgets 1,100 / 1,300 / 1,500 / 1,700 generated tokens,
+P1 Assistant-only has respective expected accuracy advantages of
++0.70 / +1.11 / +0.89 / +1.11 pp over Full FT Classification;
+P0 leads among these methods at 900 / 1,900 / 2,100.
+This is descriptive offline validation, not a significance or test result.
+
+### Mandatory FT Classification 50% NoThinking verification
+
+The analysis script now verifies that the top **225 of 450** selected
+NoThinking questions yield **73.56% accuracy** (331/450) and
+**approximately 1,092 average generated tokens**, as recorded in the
+original Route A experiment. Tolerances: 0.03 accuracy percentage points
+and 2 generated tokens per question (the reference token count is rounded).
+If inconsistent, it raises `FT_CLASSIFICATION_50PCT_FAIL` and refuses
+to generate a new dense comparative report.
+
+Run from NTU, using the **same score field and orientation** that were
+used for the successful previous dense comparison:
+
+```bash
+git fetch origin
+git pull --ff-only origin feature/route-e-equal-budget-20261102
+python scripts/route_e_equal_budget.py --self-test
+
+# Inspect actual JSONL keys rather than guessing FIELD.
+python - <<'PY'
+import json
+p = 'outputs/external_modernbert/classification/val_predictions.jsonl'
+with open(p, encoding='utf-8') as f:
+    item = json.loads(next(f))
+print(item)
+print('Available keys:', sorted(item))
+PY
+
+python scripts/route_e_equal_budget.py \\
+  --classification-scores outputs/external_modernbert/classification/val_predictions.jsonl \\
+  --classification-score-field FIELD \\
+  --classification-score-direction DIRECTION
+```
+
+Replace FIELD and DIRECTION with the meaning of the actual saved
+**continuous score**; `higher_nt` means larger scores favor
+NoThinking, `lower_nt` means smaller scores favor NoThinking.
+The expected output includes:
+
+```text
+FT_CLASSIFICATION_50PCT_PASS nt=225/450 accuracy=73.5556% tokens=...
+FT_CLASSIFICATION_SOURCE=DENSE_SCORES
+EQUAL_BUDGET_DONE ...
+```
+
+The reproduction gate is not yet reported as passed in the
+versioned documentation; the earlier dense-score success alone
+does not prove it. After the gate runs, record its exact output
+in the final project report.
+
+## Earlier preliminary six-point approximation (superseded)
+
+
 
 A coarse linear interpolation of the public validation points gives
 at budget 1500: P1 76.57%, Full FT Classification 75.37%,
