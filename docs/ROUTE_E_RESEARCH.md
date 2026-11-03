@@ -1,6 +1,6 @@
 # Route E — Frozen Representations for Adaptive Reasoning Routing
 
-**Last updated:** 2026-11-03 · **Repository:** [AdaptThink](../README.md) · **Status:** frozen-encoder comparison, prefix ablation, and dense equal-budget validation completed; server-only verification logs should be retained with the experiment artifacts.
+**Last updated:** 2026-11-03 · **Repository:** [AdaptThink](../README.md) · **Status:** frozen-encoder comparison, prompt-prefix ablation, dense equal-budget validation, and P1 hidden-layer/head ablations completed. Server-only verification logs and large feature caches remain outside Git.
 
 This is the **single source of truth** for Route E, combining the earlier frozen-probe plan, P0/P1/P2 prompt-prefix ablation protocol, and equal-generated-token analysis. Historical Route A results remain in [ROUTE_A_PLAN.md](ROUTE_A_PLAN.md); Route B is independent.
 
@@ -473,7 +473,59 @@ bootstrap confidence intervals are advisable before claiming small gains.
    quality, label noise, and linear separability; MLPs, layer sweeps, and
    altered objectives belong to **later** experiments, not this control.
 
-## 9. Maintainer notes
+## 9. P1 hidden-layer and lightweight-head ablation (2026-11-03)
+
+**Outcome: no consistent improvement over the existing P1.** The experimental code was kept off `main`; this section archives the observed results only. These numbers are from TC1 Slurm jobs `71935` (four-layer extraction + Logistic) and `71936` (Layer-28 MLP), followed by offline equal-budget replay. The 450 validation questions were used exploratorily; the sealed 485-question test set was **not** used for model selection.
+
+### Controlled protocol and reproduction
+
+Frozen DeepSeek-R1-Distill-Qwen-1.5B, the previously selected P1 Assistant-only prefix, last valid prompt-token pooling, and the same original strict 3,000 train / 450 validation samples were held fixed. One forward pass extracted `hidden_states[7,14,21,28]`: intermediate block outputs at 7/14/21 versus the **final-RMSNorm** output at index 28. Intermediate states are not final-normalized. All four Logistic heads reused the original standardized BCE + L2 / LBFGS fit.
+
+Checks passed: input-label SHA256 and IDs, the official tokenizer template, complete 3,000/450 extraction, and existing P1 cache consistency. **New Layer-28 features exactly matched old P1 features** on train and validation (`max_abs_diff=0`); the retrained Logistic also matched old P1 validation predictions (`max_pred_diff=0`) and reproduced 50% NoThinking accuracy **76.4444%** at **1,427.05** mean generated tokens.
+
+The Full Fine-tuned ModernBERT Classification scores were loaded from `outputs/external_modernbert/classification/val_predictions.jsonl`, field `p_nothinking_pred` (higher means NoThinking). The independent reproduction gate passed: `FT_CLASSIFICATION_50PCT_PASS` with **73.5556%**, **1,091.849** tokens, and 225/450 NoThinking decisions. This comparison uses the **dense per-question scores**, not approximate six-point anchors.
+
+### Hidden-layer results: fixed 50% NoThinking share
+
+| Frozen P1 layer + Logistic | Val AUC | Accuracy at 50% NT | Mean output tokens |
+| --- | ---: | ---: | ---: |
+| Layer 7 | 0.5612 | 73.56% | 1,453.8 |
+| Layer 14 | 0.4946 | 72.89% | 1,610.7 |
+| Layer 21 | 0.5250 | 72.22% | 1,549.1 |
+| **Layer 28 (original P1)** | **0.6110** | **76.44%** | **1,427.0** |
+
+These 50%-NT rows have **different token costs**, so they are diagnostic rather than a fair accuracy ranking at fixed cost. L28 has the highest validation AUC of the four probes. This is evidence about **linear recoverability of the routing signal**, not proof that intermediate layers contain no useful information; final normalization is also a representation difference.
+
+### Head results and generalization diagnostic
+
+The selected Layer-28 MLP was `Linear(1536,128) → GELU → Dropout(0.2) → Linear(128,1)`, trained only on the original training split (AdamW, lr 1e-3, weight decay 1e-3, seed 42). A stratified 600-example **training-only** holdout selected epoch 3; the model was refit on all 3,000 training questions for three epochs. No validation-based early stopping was used.
+
+| Layer-28 head | Train AUC | Val AUC | Train acc @ 0.5 | Val acc @ 0.5 | 50%-NT acc | 50%-NT tokens |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| **Logistic** | 0.9526 | **0.6110** | 88.40% | 54.67% | **76.44%** | **1,427.0** |
+| MLP | 0.8341 | 0.5726 | 77.13% | 65.56% | 74.44% | 1,645.5 |
+
+The MLP is **not** a router improvement in this configuration. Its higher thresholded `acc @ 0.5` does not override its lower AUC or worse ranking/accuracy–token performance at important budgets. Both heads have substantial train–validation AUC gaps; memorization/overfitting, label noise, and distribution shift are possible explanations, **not established causal conclusions**. The MLP result does not rule out all other nonlinear heads or hyperparameters.
+
+### Equal-generated-token comparison (strict 450-question validation)
+
+The same **451 top-k NoThinking policies** and adjacent measured-cost interpolation were used at each budget. The duplicate P1 column is omitted because L28 Logistic reproduces it exactly. Values are *expected offline strict accuracy*, with output-token cost **excluding router/encoder prefill and routing overhead**.
+
+| Budget (tokens / question) | Global Random | Full-FT ModernBERT | L7 Logistic | L14 Logistic | L21 Logistic | **L28 Logistic / P1** | L28 MLP |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 900 | 69.94% | **72.22%** | 68.44% | 69.11% | 69.56% | 70.67% | 68.90% |
+| 1,100 | 71.24% | 73.52% | 71.17% | 70.00% | 70.44% | **74.22%** | 68.96% |
+| 1,300 | 72.54% | 74.22% | 72.07% | 71.57% | 71.33% | **75.33%** | 69.35% |
+| 1,500 | 73.84% | 75.56% | 74.22% | 72.89% | 71.56% | **76.44%** | 72.44% |
+| 1,700 | 75.14% | 75.78% | 75.78% | 73.78% | 74.67% | **76.89%** | 75.11% |
+| 1,900 | 76.44% | 76.63% | 76.67% | 74.22% | 76.00% | 76.67% | **77.05%** |
+| 2,100 | 77.74% | 77.56% | 77.56% | 76.67% | 76.44% | **77.78%** | 77.77% |
+
+At 1,100–1,700 tokens, the original P1 is **+0.70 to +1.11 pp** above full-FT ModernBERT and ahead of all new layer/head variants. The MLP's isolated **+0.38 pp** vs P1 at 1,900 tokens does **not** constitute a robust overall gain. Seven-point fixed-budget comparisons are descriptive, not proof of statistical significance. The server also produced a paired-bootstrap report, but its numerical intervals were not supplied for audit; **no confidence-interval or significance claim** is made here. Reusing validation to inspect methods limits confirmatory inference.
+
+**Decision:** retain **frozen DeepSeek P1 + Layer-28 Logistic Regression** as the Route E baseline; stop this first hidden-layer/head sweep and prioritize a different hypothesis (token-aware routing or representation adaptation) instead of an open-ended hyperparameter search. Leave experimental scripts, Slurm files, large caches, and unsuccessful checkpoints out of `main`. Historical data, label protocol, and generated responses are unchanged.
+
+## 10. Maintainer notes
 
 - The original three separate files (frozen probe, prefix ablation, and equal-budget report) were consolidated into **this file** to avoid maintaining overlapping protocols.
 - Keep [ROUTE_A_PLAN.md](ROUTE_A_PLAN.md) as the historical record for the original five ModernBERT objectives and the shared chart.
