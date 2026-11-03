@@ -6,6 +6,7 @@ on:
       - feature/route-e-token-aware-20261103
     paths:
       - scripts/route_e_token_aware.py
+      - scripts/test_route_e_token_aware_integration.py
       - scripts/route_e_frozen.py
       - scripts/route_e_prompt_ablation.py
       - scripts/route_e_equal_budget.py
@@ -33,3 +34,7 @@ jobs:
         run: |
           export OPENBLAS_NUM_THREADS=2
           python scripts/route_e_token_aware.py self-test
+      - name: Cache-free 1536-D end-to-end integration
+        run: |
+          export OPENBLAS_NUM_THREADS=2
+          python scripts/test_route_e_token_aware_integration.py
