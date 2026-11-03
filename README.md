@@ -1,5 +1,10 @@
 # AdaptThink — SC4001 Reproduction & Extension
 
+<p align="center">
+  <img src="assets/adaptthink.svg" width="95%" alt="AdaptThink research goal: adaptive routing between Thinking and NoThinking under a fixed inference-token budget" />
+</p>
+
+
 This is a course-project fork of **[AdaptThink: LLM Can Learn When to Think](https://arxiv.org/abs/2505.13417)** (EMNLP 2025), originally developed by [THU-KEG](https://github.com/THU-KEG/AdaptThink).
 
 ## Project Goal
