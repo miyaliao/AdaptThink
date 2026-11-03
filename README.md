@@ -1,7 +1,7 @@
 # AdaptThink — SC4001 Reproduction & Extension
 
 <p align="center">
-  <img src="assets/adaptthink.svg" width="95%" alt="AdaptThink research goal: adaptive routing between Thinking and NoThinking under a fixed inference-token budget" />
+  <img src="assets/adaptthink-cropped.svg" width="95%" alt="AdaptThink research goal: adaptive routing between Thinking and NoThinking under a fixed inference-token budget" />
 </p>
 
 
