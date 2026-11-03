@@ -271,7 +271,8 @@ def prospective_budget_policy(rows, pred, score, budget):
         if k:
             i = ranked[k-1]
             cost += (pred["t_n"][i] - pred["t_t"][i]) / n
-        predicted.append({"fraction": k/n, "tokens": cost})
+        predicted.append({"fraction": k/n, "tokens": cost,
+                          "accuracy": 0.0})  # dummy; interpolation uses predicted costs only
     low, high = min(r["tokens"] for r in predicted), max(r["tokens"] for r in predicted)
     if not low-1e-8 <= budget <= high+1e-8:
         return {"feasible": False, "target_budget": budget,
