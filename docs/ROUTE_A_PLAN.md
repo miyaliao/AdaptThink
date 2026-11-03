@@ -1,6 +1,6 @@
 # Route A — External Router via ModernBERT
 
-Status: **five Router objectives evaluated on validation as of 2026-11-02**. Dual MSE and Dual MSE + Margin (beta=1) completed in NTU Slurm job **71767**; **Classification remains the strongest observed validation Router**. SC4001 deadline: **2026-11-16**.
+Status: **five Route A Router objectives evaluated as of 2026-11-02**, followed by **Route E frozen-representation and prompt-prefix validation experiments on 2026-11-03** (Section 8). Within the original five objectives, Classification had the strongest reported cost-matched uplift; Route E results are analyzed separately at common output-token budgets. SC4001 deadline: **2026-11-16**.
 
 ## 1. Research question
 
@@ -193,3 +193,118 @@ Each experiment stores its best checkpoint and `validation_predictions.jsonl` un
 Next reproducibility action: check `git status` on the server and commit the original Classification/Dual source files plus compact validation metrics/metadata (avoid pushing large checkpoints). Ensure all five method baselines are fully reconstructible from documented inputs and scripts; compact Dual MSE/Margin result JSON/CSV artifacts are still server-local and should be committed separately if desired.
 
 For the other project track, see [`ROUTE_B_PLAN.md`](ROUTE_B_PLAN.md).
+
+
+## 8. Route E follow-up: frozen representations and prompt-prefix ablation (2026-11-03)
+
+**What changed:** Route A's five objectives all fine-tuned ModernBERT with different
+supervision heads. Route E instead **freezes** the encoder and trains the same
+hard-label logistic probe using question-only representations; it then
+isolates DeepSeek prompt-prefix choices. See
+[Route E frozen probes](ROUTE_E_FROZEN.md),
+[DeepSeek prefix ablation](ROUTE_E_PREFIX_ABLATION.md), and
+[equal-budget analysis protocol](ROUTE_E_EQUAL_BUDGET.md).
+
+The controlled training split is the original strict 3,000-example file
+(SHA256 `761dcbb6338de1a3c71def382089c83e8024e0e55af6334dd974963e8d7e0f2c`);
+validation is the same 450-question GSM8K (300) / MATH-500 (150) strict
+split (SHA256 `4c1e984d3744cc089dcc963a30af0ef3d1ed9808c4bfd245a97e48787d501461`).
+The supervised target is fixed at `1[p_nothinking_strict >= p_thinking]`;
+train-only feature normalization, identical logistic BCE + L2, and the
+same replay evaluation are used throughout Route E.
+
+### 8.1 Representation-source and prefix ablation
+
+| Route E encoder / prompt | Validation AUC (diagnostic) | Accuracy at 50% NoThinking | Mean generated tokens | Uplift vs its budget-matched Global Random |
+| --- | ---: | ---: | ---: | ---: |
+| Frozen ModernBERT-base, CLS | 0.4843 | 72.22% | 1,285.8 | -0.22 pp |
+| Frozen DeepSeek P0: Assistant + `<think>` | 0.5823 | 74.67% | 1,348.2 | +1.82 pp |
+| **Frozen DeepSeek P1: Assistant only** | **0.6110** | **76.44%** | 1,427.0 | **+3.08 pp** |
+| Frozen DeepSeek P2: User/question only | 0.5728 | 74.22% | 1,421.5 | +0.90 pp |
+| Full fine-tuned ModernBERT Classification (historical reference) | Not recorded here | 73.56% | 1,092 (rounded) | +2.37 pp |
+
+P0 is the final valid prompt-token hidden state after adding
+`<｜Assistant｜><think>\n`, P1 removes only `<think>\n`, and P2 removes
+the entire Assistant generation prefix. All three use the frozen DeepSeek
+model's final-layer representation (1,536 dimensions), with no generation
+before routing. At a *common 50% NoThinking share*, the mean generation
+token budgets differ, so these rows alone **must not** be interpreted as
+a fixed-cost ranking. AUC assesses noisy binary-label separation, **not**
+routing efficiency or statistical significance.
+
+### 8.2 Unified Accuracy–Token Curve — common generated-token budgets
+
+![Accuracy–Token Cost Curve: Full FT Classification, frozen DeepSeek P0/P1/P2, and Global Random](figures/route_a_e_equal_budget_20261103.svg)
+
+*Figure: Strict 450-example validation; higher accuracy and fewer
+generated tokens are better. Every Router is evaluated at the same
+**expected mean generated-token budget**. The plotted points use the
+saved 450 per-question scores for the four Routers, not the earlier
+six-point Classification approximation. Generation-only token costs
+exclude Router prefill/inference overhead.*
+
+| Common budget (tokens / question) | Global Random | FT Classification | P0 + think | P1 Assistant | P2 Question | P1 - FT (pp) |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 900 | 69.94% | 72.22% | **72.89%** | 70.67% | 71.83% | -1.55 |
+| 1,100 | 71.24% | 73.52% | 73.20% | **74.22%** | 72.67% | +0.70 |
+| 1,300 | 72.54% | 74.22% | 74.44% | **75.33%** | 73.56% | +1.11 |
+| 1,500 | 73.84% | 75.56% | 75.69% | **76.44%** | 74.67% | +0.89 |
+| 1,700 | 75.14% | 75.78% | 76.44% | **76.89%** | 76.62% | +1.11 |
+| 1,900 | 76.44% | 76.63% | **77.11%** | 76.67% | 75.78% | +0.04 |
+| 2,100 | 77.74% | 77.56% | **78.44%** | 77.78% | 76.90% | +0.22 |
+
+**Interpretation:** P1 has the highest observed accuracy at the four
+listed budgets from **1,100 through 1,700** tokens (its advantage over
+FT Classification is **+0.70 to +1.11 pp**). P0 performs better at
+900, 1,900, and 2,100. This is **budget-dependent**; no representation
+uniformly dominates. P1's average advantage at the four middle
+reporting budgets is **+0.95 pp** (descriptive only).
+
+**Cost-matching method:** for each Router, rank validation questions
+using only its saved pre-generation scores and evaluate all
+`k = 0..450` top-`k` NoThinking routing policies. Policies are
+sorted by their *measured validation* mean generated-token cost; the
+two cost-adjacent policies are mixed at each reporting budget,
+giving an exact **expected mean token budget** in the offline
+replay. The policy mixture is **not** an accuracy-maximizing
+oracle or proof that the same cost will hold online. The dense
+Classification source is
+`outputs/external_modernbert/classification/val_predictions.jsonl`.
+All four dense score sets passed 450-ID coverage checks in the
+server-side comparison. The remaining historical 50% NoThinking
+reproduction check is described below.
+
+### 8.3 Classification baseline reproduction gate (50% NoThinking)
+
+The original Classification reference reports **73.56% accuracy**
+(`331/450`) and **about 1,092 mean generated tokens** when exactly
+225 of 450 problems are routed to NoThinking. The equal-budget
+comparison script now independently reconstructs this top-225
+policy from raw Classification validation scores and **fails closed**
+if the result differs beyond 0.03 percentage points in accuracy or
+2 generated tokens on average. This is a source/score-orientation
+consistency check; the reference token figure is rounded.
+
+**Verification status: pending server run after this code update.**
+The previous run printed `FT_CLASSIFICATION_SOURCE=DENSE_SCORES`,
+which confirms the 450 predictions were read, **not yet that the
+historical top-225 policy was reproduced**.
+
+```bash
+# CPU only. Replace FIELD and DIRECTION with the values that produced
+# the earlier FT_CLASSIFICATION_SOURCE=DENSE_SCORES output.
+python scripts/route_e_equal_budget.py \\
+  --classification-scores outputs/external_modernbert/classification/val_predictions.jsonl \\
+  --classification-score-field FIELD \\
+  --classification-score-direction DIRECTION
+# Required: FT_CLASSIFICATION_50PCT_PASS ... accuracy=73.5556% tokens≈1092
+# Then:    FT_CLASSIFICATION_SOURCE=DENSE_SCORES
+```
+
+A mismatched score direction/field/checkpoint or inconsistent tie
+ordering should be investigated, rather than forcing the result
+to match. Results in this section summarize the observed validation
+outputs, not held-out testing; no confidence intervals or
+significance tests have been completed. **Router overhead, additional
+DeepSeek prefill, and the absence of KV-cache reuse in this pipeline
+must be considered before claiming any end-to-end efficiency gain.**
