@@ -59,9 +59,14 @@ def check_p1(train, val, smoke, max_length=None, batch_size=None, model_path=Non
         X, meta = prefix.read_cache(path, rows, sha, "assistant", smoke)
         if meta["layer"] != "last_after_final_norm" or meta["pooling"] != "last_valid_prompt_token":
             raise ValueError(f"Wrong P1 final layer/pooling: {path}")
-        for key, value in (("max_length", max_length), ("batch_size", batch_size)):
-            if value is not None and int(meta[key]) != value:
-                raise ValueError(f"P1 {key}={meta[key]} != requested {value}; keep settings identical")
+        if max_length is not None and int(meta["max_length"]) != max_length:
+            raise ValueError(f"P1 max_length={meta['max_length']} != requested {max_length}")
+        # Batch size is a memory/performance parameter, not a prompt change.
+        # Allow smaller new batches for output_hidden_states memory pressure,
+        # but require numeric Layer-28 reproduction against original P1.
+        if batch_size is not None and int(meta["batch_size"]) != batch_size:
+            print(f"P1_BATCH_SIZE_DIFF split={split} old={meta['batch_size']} "
+                  f"new={batch_size}; checking Layer-28 numeric identity", flush=True)
         if model_path is not None and Path(meta["model"]).resolve() != Path(model_path).resolve():
             raise ValueError(f"Model checkpoint differs from existing P1: {meta['model']}")
         ref[split] = (X, meta)
@@ -260,7 +265,7 @@ def load_splits(smoke):
                 "max_length", "batch_size"):
         if mt[key] != mv[key]:
             raise ValueError(f"Train/validation layer caches mismatch: {key}")
-    for key in ("model", "chat_template_sha256", "max_length", "batch_size", "dtype"):
+    for key in ("model", "chat_template_sha256", "max_length", "dtype"):
         if mt[key] != refs["train"][1][key]:
             raise ValueError(f"Layer cache differs from original P1 reference in {key}")
     for split, X, ref in (("train", Xtr, refs["train"][0]),
