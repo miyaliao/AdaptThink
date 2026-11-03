@@ -7,6 +7,8 @@ on:
     paths:
       - scripts/route_e_token_aware.py
       - scripts/test_route_e_token_aware_integration.py
+      - scripts/route_e_cost_only.py
+      - scripts/test_route_e_cost_only.py
       - scripts/route_e_frozen.py
       - scripts/route_e_prompt_ablation.py
       - scripts/route_e_equal_budget.py
@@ -28,7 +30,7 @@ jobs:
         run: python -m pip install 'numpy>=1.24,<3'
       - name: Compile Python and validate Slurm shell syntax
         run: |
-          python -m py_compile scripts/route_e_token_aware.py
+          python -m py_compile scripts/route_e_token_aware.py scripts/route_e_cost_only.py scripts/test_route_e_cost_only.py
           bash -n scripts/ntu_route_e_token_aware.sbatch
       - name: Cache-free synthetic self-test
         run: |
@@ -38,3 +40,9 @@ jobs:
         run: |
           export OPENBLAS_NUM_THREADS=2
           python scripts/test_route_e_token_aware_integration.py
+
+      - name: Experiment 1 cost-only CPU tests
+        run: |
+          export OPENBLAS_NUM_THREADS=2
+          python scripts/route_e_cost_only.py self-test
+          python scripts/test_route_e_cost_only.py
