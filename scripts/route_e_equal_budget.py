@@ -8,7 +8,9 @@ bracketing the target measured mean token cost. This is an *offline
 descriptive benchmark*: routing thresholds are not to be tuned on test.
 
 FT Classification: supply its 450 validation routing scores for a dense,
-same-protocol comparison. Otherwise use the six previously reported
+same-protocol comparison. A 50%-NoThinking reproduction check is required
+before accepting the dense Classification curve (73.56%, ~1092 tokens).
+Otherwise use the six previously reported
 Route A aggregate points, **explicitly marked APPROXIMATE**.
 
 Usage:
@@ -265,6 +267,8 @@ def run(args):
             curves["FT_classification"])
         evidence["FT_classification"] = {
             "type": "dense_prefix_top_k", "source": str(args.classification_scores),
+            "score_field": args.classification_score_field,
+            "score_direction": args.classification_score_direction,
             "n_policies": len(curves["FT_classification"]), "exact": True}
     else:
         curves["FT_classification"] = class_anchor_curve(rows)
