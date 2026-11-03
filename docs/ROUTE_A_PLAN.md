@@ -1,6 +1,6 @@
 # Route A — External Router via ModernBERT
 
-Status: **five Route A Router objectives evaluated as of 2026-11-02**, followed by **Route E frozen-representation and prompt-prefix validation experiments on 2026-11-03** (Section 8). Within the original five objectives, Classification had the strongest reported cost-matched uplift; Route E results are analyzed separately at common output-token budgets. SC4001 deadline: **2026-11-16**.
+Status: **five Route A Router objectives evaluated as of 2026-11-02**, followed by **Route E frozen-representation, prompt-prefix, and token-aware routing validation experiments on 2026-11-03** (Section 8). Within the original five objectives, Classification had the strongest reported cost-matched uplift; Route E results are analyzed separately at common output-token budgets. SC4001 deadline: **2026-11-16**.
 
 ## 1. Research question
 
@@ -303,3 +303,28 @@ outputs, not held-out testing; no confidence intervals or
 significance tests have been completed. **Router overhead, additional
 DeepSeek prefill, and the absence of KV-cache reuse in this pipeline
 must be considered before claiming any end-to-end efficiency gain.**
+
+
+### 8.4 Token-aware P2 follow-up — cost and quality signals (2026-11-03)
+
+Using the **same frozen DeepSeek P1 Assistant-only final hidden states**, the P2 token-aware study (distinct from the *P2 question-only prompt* in §8.1–8.2) compared three pre-generation routing scores:
+
+- **Cost-only:** rank questions by predicted extra Thinking tokens `Δt̂ = t̂_T − t̂_N`; route the *largest* predicted extra-cost questions to NoThinking first.
+- **Ridge + Cost:** `S = Δp̂_Ridge − 0.05 × Δt̂ / 1000`, using a Ridge success-gain regressor and the same Ridge token-cost heads.
+- **Logistic + Cost:** replace the Ridge quality term with a **train-standardized negative Frozen P1 Logistic logit**; keep the same token-cost heads and coefficient `0.05`. This is a *preference score*, **not** a calibrated success probability.
+
+**Strict validation accuracy at equal mean generated-token budgets (450 questions):**
+
+| Budget (tokens/question) | Frozen P1 Logistic | P2 Cost-only | P2 Ridge + Cost | P2 Logistic + Cost |
+| ---: | ---: | ---: | ---: | ---: |
+| 900 | 70.67% | **74.44%** | 72.00% | **74.44%** |
+| 1,100 | 74.22% | **75.11%** | 73.35% | 74.89% |
+| 1,300 | 75.33% | 75.56% | **75.78%** | 75.11% |
+| 1,500 | **76.44%** | 75.56% | 75.78% | 75.36% |
+| 1,700 | 76.89% | 75.97% | **77.33%** | 76.67% |
+| 1,900 | 76.67% | 77.56% | **77.78%** | 77.11% |
+| 2,100 | 77.78% | 78.00% | **78.05%** | 77.99% |
+
+**Takeaway:** Cost-only beats Frozen P1 at **5 of 7** listed budgets (especially 900 tokens, **+3.77 pp**), but is worse at 1,500–1,700. Ridge + Cost does better in parts of the medium/high-budget range; Logistic + Cost gives no stable additional gain. These are **exploratory validation-only dense replay curves**, with observed validation output lengths used *after ranking* to match budgets. Predicted-budget control remains biased; no overall statistically robust or deployable improvement is claimed.
+
+Detailed methods/results: [P2 Token-aware](https://github.com/miyaliao/AdaptThink/blob/feature/route-e-token-aware-20261103/docs/ROUTE_E_TOKEN_AWARE.md), [Cost-only](https://github.com/miyaliao/AdaptThink/blob/feature/route-e-token-aware-20261103/docs/ROUTE_E_COST_ONLY.md), [Quality fusion](https://github.com/miyaliao/AdaptThink/blob/feature/route-e-token-aware-20261103/docs/ROUTE_E_QUALITY_FUSION.md).
