@@ -158,6 +158,52 @@ def linear_bracket(curve, budget):
     }
 
 
+
+def verify_classification_50pct(curve, expected_accuracy=331/450,
+                                expected_tokens=1092.0,
+                                accuracy_tolerance_pp=0.03,
+                                token_tolerance=2.0):
+    """Reproduce the original Route A 50%-NT result from the 450 raw scores.
+
+    With N=450, top-k index 225 is precisely 50% NoThinking.
+    Expected 73.56% (331/450), ~1092 mean generated tokens.
+    The original token count was reported rounded to the nearest integer.
+    """
+    if len(curve) != 451:
+        raise ValueError(f"Expected 451 prefix policies, got {len(curve)}")
+    point = curve[225]
+    measured_acc_pp = 100 * point["accuracy"]
+    expected_acc_pp = 100 * expected_accuracy
+    acc_error_pp = measured_acc_pp - expected_acc_pp
+    token_error = point["tokens"] - expected_tokens
+    if abs(acc_error_pp) > accuracy_tolerance_pp or abs(token_error) > token_tolerance:
+        raise RuntimeError(
+            "FT_CLASSIFICATION_50PCT_FAIL: 225/450 NoThinking policy does not "
+            "reproduce historical Classification (73.56%, about 1092 tokens). "
+            f"Observed accuracy={measured_acc_pp:.4f}% "
+            f"tokens={point['tokens']:.3f}; "
+            f"accuracy_error={acc_error_pp:+.4f} pp; "
+            f"tokens_error={token_error:+.3f}. "
+            "Check the selected score field, score direction, strict "
+            "validation ID set, checkpoint, and tie-breaking. "
+            "Do not interpret a dense FT comparison until fixed.")
+    print("FT_CLASSIFICATION_50PCT_PASS "
+          f"nt=225/450 accuracy={measured_acc_pp:.4f}% "
+          f"tokens={point['tokens']:.3f} "
+          f"accuracy_error_pp={acc_error_pp:+.4f} "
+          f"token_error={token_error:+.3f}", flush=True)
+    return {
+        "verified": True,
+        "n_nothinking": 225,
+        "accuracy": point["accuracy"],
+        "mean_generated_tokens": point["tokens"],
+        "reference_accuracy": expected_accuracy,
+        "reference_tokens_rounded": expected_tokens,
+        "accuracy_error_pp": acc_error_pp,
+        "tokens_error": token_error,
+    }
+
+
 def class_anchor_curve(rows):
     """Classification fallback: six Route A rounded aggregate checkpoints."""
     from train_modernbert_delta import endpoints
@@ -204,6 +250,7 @@ def run(args):
     ids = [r["sample_id"] for r in rows]
     curves = {}
     evidence = {}
+    classification_reproduction = None
     for method, path in PREDICTIONS.items():
         scores = load_scores(path, ids)
         curves[method] = dense_curve(rows, scores)
@@ -214,6 +261,8 @@ def run(args):
                              args.classification_score_direction,
                              args.classification_score_field)
         curves["FT_classification"] = dense_curve(rows, scores)
+        classification_reproduction = verify_classification_50pct(
+            curves["FT_classification"])
         evidence["FT_classification"] = {
             "type": "dense_prefix_top_k", "source": str(args.classification_scores),
             "n_policies": len(curves["FT_classification"]), "exact": True}
@@ -269,6 +318,7 @@ def run(args):
                              "Budget policies must not be tuned using sealed test labels.",
         "router_overhead_included": False,
         "classification_dense_scores_present": evidence["FT_classification"]["exact"],
+        "classification_50pct_reproduction": classification_reproduction,
         "evidence": evidence, "endpoints": fixed, "table": table,
     }, indent=2) + "\n", encoding="utf-8")
 
@@ -325,6 +375,12 @@ def self_test():
     v = linear_bracket(ordered, 80.)
     assert abs(v["accuracy"]-.75) < 1e-9 and abs(v["mean_generated_tokens"]-80) < 1e-9
     assert abs(v["mix_right_probability"]-.5) < 1e-9
+    # Unit-test the reproduction invariant with synthetic expected values.
+    check = verify_classification_50pct(
+        ordered + [ordered[-1]] * 448,
+        expected_accuracy=ordered[-1]["accuracy"],
+        expected_tokens=ordered[-1]["tokens"])
+    assert check["verified"]
     # Verify alternate score orientation yields same sorted policy.
     assert dense_curve(rows, {"a": 0., "b": 1.}) == dense_curve(
         rows, {"a": -0., "b": 1.})
