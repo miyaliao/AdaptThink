@@ -201,9 +201,7 @@ For the other project track, see [`ROUTE_B_PLAN.md`](ROUTE_B_PLAN.md).
 supervision heads. Route E instead **freezes** the encoder and trains the same
 hard-label logistic probe using question-only representations; it then
 isolates DeepSeek prompt-prefix choices. See
-[Route E frozen probes](ROUTE_E_FROZEN.md),
-[DeepSeek prefix ablation](ROUTE_E_PREFIX_ABLATION.md), and
-[equal-budget analysis protocol](ROUTE_E_EQUAL_BUDGET.md).
+[the consolidated Route E research report](ROUTE_E_RESEARCH.md).
 
 The controlled training split is the original strict 3,000-example file
 (SHA256 `761dcbb6338de1a3c71def382089c83e8024e0e55af6334dd974963e8d7e0f2c`);
@@ -285,10 +283,7 @@ if the result differs beyond 0.03 percentage points in accuracy or
 2 generated tokens on average. This is a source/score-orientation
 consistency check; the reference token figure is rounded.
 
-**Verification status: pending server run after this code update.**
-The previous run printed `FT_CLASSIFICATION_SOURCE=DENSE_SCORES`,
-which confirms the 450 predictions were read, **not yet that the
-historical top-225 policy was reproduced**.
+**Verification status:** the user reports that the 50%-NoThinking reproduction check has been completed. The exact `FT_CLASSIFICATION_50PCT_PASS` output has not yet been archived in this tracked document; retain it with the server-side results for audit.
 
 ```bash
 # CPU only. Replace FIELD and DIRECTION with the values that produced
