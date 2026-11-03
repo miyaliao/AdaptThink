@@ -263,7 +263,7 @@ def prospective_budget_policy(rows, pred, score, budget):
     are used after policies are fixed, solely to assess budget error.
     """
     n = len(score)
-    ranked = np.argsort(-score, kind="stable")
+    ranked = sorted(range(n), key=lambda i: (-float(score[i]), rows[i]["sample_id"]))
     base_cost = float(np.mean(pred["t_t"]))
     predicted = []
     cost = base_cost
@@ -572,8 +572,8 @@ def run(args):
                     chunks.append(f"{method}={entry['groups']['overall']['accuracy']:.2%}")
             print(f"P2_BUDGET {b['budget']:.0f} | "+" | ".join(chunks), flush=True)
     else:
-        report["smoke_note"] = "32 strict train / 24 validation; no full "
-                               "450-question budget comparisons or model selection"
+        report["smoke_note"] = ("32 strict train / 24 validation; no full "
+                                "450-question budget comparisons or model selection")
 
     save_json(report_dir/"validation.json", report)
     save_json(report_dir/"config.json", {
