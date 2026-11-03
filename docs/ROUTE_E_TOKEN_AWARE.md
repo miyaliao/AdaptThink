@@ -145,3 +145,7 @@ The numbers below are **exploratory measured-token cost-matched dense replay**, 
 4. For deployable thresholds, reserve a representative held-out calibration workload, evaluate realized token-budget error without using target outcomes, and account for encoder-prefill overhead.
 
 The precise validation.json with bootstrap and prospective-budget diagnostics has **not yet been independently reviewed**. Draft PR #4 remains open pending review.
+
+## 7. Follow-up Experiment 1 — Cost-only ablation
+
+See [ROUTE_E_COST_ONLY.md](ROUTE_E_COST_ONLY.md) for the **B Quality-only vs E Cost-only vs D combined** controlled test. It exclusively replays existing frozen P2 450-question predictions, hard-checks unchanged B/D reference metrics, and reports per-dataset cost-ranking diagnostic statistics with paired bootstrap. This is a distinct diagnostic; no cost calibration or encoder training is introduced.
