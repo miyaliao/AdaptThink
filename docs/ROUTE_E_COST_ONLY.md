@@ -1,6 +1,6 @@
 # Route E / P2 — Experiment 1: Cost-only ablation
 
-**Status: code and synthetic CI passing; real strict 450-question server replay pending.**
+**Status: strict 450-question validation replay completed; exploratory interpretation, further uncertainty and type-controlled analysis pending.**
 **Date: 2026-11-03**
 
 Parent protocol: [ROUTE_E_TOKEN_AWARE.md](ROUTE_E_TOKEN_AWARE.md).
@@ -87,3 +87,35 @@ Successful log markers:
 - The existing P2's prospective budget-control error (e.g. target 2,100 vs realized ~1,692) is a separate problem. **Experiment 1 intentionally does not calibrate lengths** or make deployment claims.
 - A negligible D−E difference is not proof the quality head is useless generally; it is evidence under **this frozen representation, fitted heads, lambda and offline replay protocol**.
 - Report all seven budgets and negative results; do not tune a score using the sealed test set.
+
+## 6. Strict 450-question run: reported results (2026-11-03)
+
+The NTU TC1 operator reported `COST_ONLY_SELFTEST_PASS` and `COST_ONLY_REPRODUCTION_PASS B/D unchanged strict dense replay`; canonical 450 rows and frozen saved-head predictions were used. The following are **strict validation exploratory dense actual-token-matched** values, not online deployment or held-out test numbers.
+
+| Budget | B quality | E cost-only | D combined | D−E (pp) | Nominal paired-bootstrap 95% CI for D−E (pp) |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 900 | 70.00% | **74.44%** | 72.00% | −2.44 | [−5.55, +0.45] |
+| 1,100 | 72.23% | **75.11%** | 73.35% | −1.76 | [−4.43, +0.71] |
+| 1,300 | 73.33% | 75.56% | **75.78%** | +0.22 | [−2.22, +2.67] |
+| 1,500 | 74.89% | 75.56% | **75.78%** | +0.22 | [−2.00, +2.22] |
+| 1,700 | 76.89% | 75.97% | **77.33%** | +1.36 | [−0.19, +3.11] |
+| 1,900 | 77.49% | 77.56% | **77.78%** | +0.22 | [−1.11, +1.56] |
+| 2,100 | 78.00% | 78.00% | **78.05%** | +0.05 | [−0.53, +0.67] |
+
+**Cost rank diagnostics:**
+
+| Group | N | Predicted extra-cost Spearman | Δt MAE | Predicted Δt mean | Actual Δt mean |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Overall | 450 | 0.623 | 1,531.8 | 2,165.3 | 1,641.4 |
+| GSM8K | 300 | 0.351 | 861.3 | 972.2 | 616.0 |
+| MATH | 150 | 0.474 | 2,872.9 | 4,551.5 | 3,692.1 |
+
+### What these findings support and do not support
+
+- **Strong descriptive low-budget signal:** at 900 and 1,100, cost-only E exceeds quality-only B by +4.44 and +2.88 percentage points, and exceeds D by +2.44 and +1.76 points, respectively. This is consistent with weak Δp prediction contaminating cost-first ranking at tight budgets, but is not proof of that mechanism.
+- **Possible higher-budget complementary quality signal:** D exceeds E in the remaining five budgets, most notably +1.36 pp at 1,700. **Every D−E nominal paired 95% interval includes zero**, so the apparent superiority of D over E is uncertain.
+- **Not just type classification:** within-group extra-cost Spearman is positive (0.351 GSM8K, 0.474 MATH), although substantially below the overall 0.623. Group-level cost differences clearly contribute; ranking information also exists within groups. To quantify how much *routing accuracy* comes from cross-group allocation versus within-group ranking, perform a type-controlled ablation on fixed evaluation-only strata and compare per-dataset routing fractions and outcomes.
+- **Cost calibration is still inaccurate:** predicted Δt exceeds observed mean in both groups (GSM8K +356.2; MATH +859.4 tokens). This does not mean either group is properly calibrated for prospective target budgets.
+- **Required next readout:** the original `comparison.json` holds E−B and D−B paired CIs and GSM8K/MATH budget-level accuracy and NoThinking fractions, which are **not in the printed log**. Inspect these before asserting statistical robustness or assigning the improvements to cross-dataset allocation.
+
+These outcomes document the operator-provided console log; the full server-side comparison.json has not yet been independently checked here. The seven reported budget points are all from one strict validation set with no multiple-comparison adjustment. No sealed test access or model retraining should follow from these observations without a separate protocol.
