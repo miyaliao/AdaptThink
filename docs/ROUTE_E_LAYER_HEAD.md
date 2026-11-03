@@ -8,7 +8,7 @@ Which transformer hidden layer and lightweight head produce the best *accuracy a
 
 - **Layers:** `hidden_states[7,14,21,28]` from a **single forward pass** using `AutoModel(output_hidden_states=True, use_cache=False)`. The checkpoint must contain 28 transformer blocks. Indices 7/14/21 represent respective block outputs; index 28 is the **final RMSNorm** output (`last_hidden_state`). Intermediate states are *not* normalized by the final RMSNorm. The same per-feature train-fitted StandardScaler is used for every head.
 - **Pooling:** final non-padding prompt token; right padding with `attention_mask`. Inputs built through the existing `route_e_prompt_ablation.tokenize_ablations(..., "assistant", ...)`, which checks the tokenizer's official template.
-- **Feature consistency:** verify original P1 `{train,val}.npz`, sample IDs/order, strict hashes, model path, template hash, precision, max length, and batch size. Numerically compare new Layer 28 to original P1 final-layer arrays, then re-run its logistic head and require the original 50%-NoThinking policy accuracy/tokens to match.
+- **Feature consistency:** verify original P1 `{train,val}.npz`, sample IDs/order, strict hashes, model path, template hash, precision, and max length; record any changed extraction batch size. Numerically compare new Layer 28 to original P1 final-layer arrays, then re-run its logistic head and require the original 50%-NoThinking policy accuracy/tokens to match.
 - **Head 1:** existing frozen Route E Logistic Regression, BCE + L2 (`l2=1e-3`, CPU LBFGS), identical for all four layers.
 - **Head 2:** small `Linear(1536,128) → GELU → Dropout(0.2) → Linear(128,1)`, BCE + AdamW. **Only** test one prespecified layer after reviewing the linear probe; do not sweep heads arbitrarily. The MLP chooses epoch using a stratified 80/20 *train-only* split, then refits for the chosen number of epochs on all original 3000 training questions. The fixed 450 validation labels do not control early stopping.
 
@@ -41,7 +41,7 @@ ls results/route_e/layer_head/logistic_L*_val.json
 sbatch --export=ALL,E_STAGE=mlp,E_SMOKE=0,E_LAYER=14 scripts/ntu_route_e_layer_head.sbatch
 ```
 
-If the smoke/full job aborts halfway through, inspect new `outputs/route_e/layer_head/{smoke,full}/{train,val}.npz` before **explicitly removing only the failed new files**; extraction intentionally refuses overwriting existing artifacts. If CUDA OOM occurs, use `E_BATCH_SIZE=4` **only if the existing P1 cache was also made with batch size 4**, or separate a new well-documented representation configuration instead of claiming P1 identity. On full cache, Layer-28 accuracy/tokens at 50% NT must reproduce original P1. Log only cache checks / Slurm job completion as verified, not full-results claims before their actual run.
+If the smoke/full job aborts halfway through, inspect new `outputs/route_e/layer_head/{smoke,full}/{train,val}.npz` before **explicitly removing only the failed new files**; extraction intentionally refuses overwriting existing artifacts. If CUDA OOM occurs, try `E_BATCH_SIZE=4` (new extraction may use a smaller batch than the historical P1 cache). The script logs the batch-size difference and still requires strict Layer-28 numerical and 50%-NT reproduction checks before comparison. On full cache, Layer-28 accuracy/tokens at 50% NT must reproduce original P1. Log only cache checks / Slurm job completion as verified, not full-results claims before their actual run.
 
 ## Cost-matched validation and uncertainty
 
