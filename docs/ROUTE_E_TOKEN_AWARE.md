@@ -1,6 +1,6 @@
 # Route E / P2 — Token-aware routing on Frozen DeepSeek P1
 
-**Status: implementation ready for NTU-side cache verification and strict validation.**  
+**Status: first full strict NTU validation run complete; statistical and deployability checks pending.**  
 **Date: 2026-11-03** · Reference: [ROUTE_E_RESEARCH.md](ROUTE_E_RESEARCH.md) and [ROUTE_A_PLAN.md](ROUTE_A_PLAN.md).
 
 ## 1. Research question and fixed protocol
@@ -119,3 +119,29 @@ Save the validation artifacts to Git **only after checking the actual outputs an
 3. **B and D underperform P1 Logistic:** a useful negative result. Check label noise, ranking structure and distribution mismatch before adding additional losses or finetuning the backbone.
 
 Do **not** select a conclusion until the NTU full-validation report has been executed and inspected. No code in this stage modifies DeepSeek, reruns generation, or accesses the sealed test set.
+
+## 6. First full NTU validation run (2026-11-03; preliminary)
+
+The operator reported successful no-GPU P2 execution using **3,000 × 1,536 train** and **450 × 1,536 validation** frozen P1 feature caches with expected strict SHA256 checks. Full-FT ModernBERT reproduction passed at **73.5556% accuracy, 1,091.849 mean generated tokens**. P2 CPU head training took **0.24 s**, total script run **1.87 s** (excluding original DeepSeek feature extraction).
+
+The numbers below are **exploratory measured-token cost-matched dense replay**, not predicted-budget deployment policies:
+
+| Budget | Global Random | Delta-only B | Token-aware D | Frozen P1 | Full FT ModernBERT | D−B (pp) |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 900 | 69.94% | 70.00% | 72.00% | 70.67% | 72.22% | +2.00 |
+| 1,100 | 71.24% | 72.23% | 73.35% | 74.22% | 73.52% | +1.12 |
+| 1,300 | 72.54% | 73.33% | 75.78% | 75.33% | 74.22% | +2.45 |
+| 1,500 | 73.84% | 74.89% | 75.78% | 76.44% | 75.56% | +0.89 |
+| 1,700 | 75.14% | 76.89% | 77.33% | 76.89% | 75.78% | +0.44 |
+| 1,900 | 76.44% | 77.49% | 77.78% | 76.67% | 76.63% | +0.29 |
+| 2,100 | 77.74% | 78.00% | 78.05% | 77.78% | 77.56% | +0.05 |
+
+**Preliminary interpretation:** D improves on its identical-quality-head control B at all seven budgets, most strongly at 1,300 (+2.45 pp) and 900 (+2.00 pp). D leads the displayed methods at 1,300, 1,700, 1,900 and 2,100, but not at 900, 1,100 or 1,500. These are descriptive observations only, not a significance test.
+
+**Outstanding checks:**
+1. Review validation length MAE, RMSE, Spearman, difference-cost predictions, and predicted vs observed length bias. Train length means ~8,847/2,865 vs validation ~2,209/568 imply substantial distribution shift.
+2. Review paired-bootstrap 95% intervals for D minus Delta-only; avoid claiming significance without supported uncertainty.
+3. **Re-run the prospective predicted-only budget policy** after commit `6a6669d`: an orientation bug in this *separate* policy previously routed the highest predicted Thinking-preference questions to NoThinking. The logged dense P2_BUDGET results were **unaffected**, because the dense score map correctly negates Thinking preference.
+4. For deployable thresholds, reserve a representative held-out calibration workload, evaluate realized token-budget error without using target outcomes, and account for encoder-prefill overhead.
+
+The precise validation.json with bootstrap and prospective-budget diagnostics has **not yet been independently reviewed**. Draft PR #4 remains open pending review.
