@@ -263,7 +263,8 @@ def prospective_budget_policy(rows, pred, score, budget):
     are used after policies are fixed, solely to assess budget error.
     """
     n = len(score)
-    ranked = sorted(range(n), key=lambda i: (-float(score[i]), rows[i]["sample_id"]))
+    # score is THINKING preference: select the LOWEST score for NoThinking first.
+    ranked = sorted(range(n), key=lambda i: (float(score[i]), rows[i]["sample_id"]))
     base_cost = float(np.mean(pred["t_t"]))
     predicted = []
     cost = base_cost
@@ -283,7 +284,7 @@ def prospective_budget_policy(rows, pred, score, budget):
     bracket = linear_bracket(predicted, budget)
     ids = [r["sample_id"] for r in rows]
     # Use ID-based scores to preserve the same tie ordering as dense replay.
-    pn = nt_prob_at_bracket(rows, {sid: float(v) for sid, v in zip(ids, score)}, bracket)
+    pn = nt_prob_at_bracket(rows, {sid: float(-v) for sid, v in zip(ids, score)}, bracket)
     groups = group_metrics(rows, pn)
     return {"feasible": True, "target_budget": float(budget),
             "predicted_budget": float(
@@ -656,6 +657,8 @@ def self_test():
     assert p1["feasible"] and p2["feasible"]
     assert p1["mix"] == p2["mix"]
     assert np.isclose(p1["predicted_budget"],60.)
+    # The lower-Thinking-benefit problem b must be routed to NoThinking.
+    assert np.isclose(p1["actual_accuracy"], 1.0)
     assert not np.isclose(p1["actual_budget"],p2["actual_budget"])
     assert not prospective_budget_policy(rows, ex, score, 500.)["feasible"]
     assert spearman([1,2,3],[3,2,1]) == -1.
