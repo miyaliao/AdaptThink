@@ -1,6 +1,6 @@
 # Route E — Frozen Representations for Adaptive Reasoning Routing
 
-**Last updated:** 2026-11-03 · **Repository:** [AdaptThink](../README.md) · **Status:** frozen-encoder comparison, prompt-prefix ablation, dense equal-budget validation, and P1 hidden-layer/head ablations completed. Server-only verification logs and large feature caches remain outside Git.
+**Last updated:** 2026-11-04 · **Repository:** [AdaptThink](../README.md) · **Status:** frozen-encoder, prompt-prefix, hidden-layer/head, and budget-conditioned fusion ablations documented; BCHF closed without stable gains. Server-only verification logs and large feature caches remain outside Git.
 
 This is the **single source of truth** for Route E, combining the earlier frozen-probe plan, P0/P1/P2 prompt-prefix ablation protocol, and equal-generated-token analysis. Historical Route A results remain in [ROUTE_A_PLAN.md](ROUTE_A_PLAN.md); Route B is independent.
 
@@ -525,7 +525,25 @@ At 1,100–1,700 tokens, the original P1 is **+0.70 to +1.11 pp** above full-FT 
 
 **Decision:** retain **frozen DeepSeek P1 + Layer-28 Logistic Regression** as the Route E baseline; stop this first hidden-layer/head sweep and prioritize a different hypothesis (token-aware routing or representation adaptation) instead of an open-ended hyperparameter search. Leave experimental scripts, Slurm files, large caches, and unsuccessful checkpoints out of `main`. Historical data, label protocol, and generated responses are unchanged.
 
-## 10. Maintainer notes
+## 10. Budget-conditioned Head Fusion — completed negative ablation (2026-11-04)
+
+**Decision: close this direction; do not promote BCHF as the preferred Router.** Reusing the frozen DeepSeek P1 Logistic classification logit and the existing Thinking/NoThinking Ridge cost predictions, BCHF tested standardized `S_NT(x,B) = alpha(B)*q(x) + (1-alpha(B))*c(x)`, with `alpha ∈ {0, .25, .50, .75, 1}`. Five dataset-stratified folds chose a fixed alpha or a low/medium/high budget-conditioned alpha using development rows, then combined held-out routing scores. No Heads or DeepSeek weights were retrained. The strict 450-question, observed-cost offline validation completed; 8/8 tests and the historical Full FT 50%-NT reproduction gate passed.
+
+| Budget (tokens/problem) | Best fixed alpha (OOF) | Budget-conditioned (OOF) | Difference (pp) |
+| ---: | ---: | ---: | ---: |
+| 900 | 71.33% | 73.11% | +1.78 |
+| 1,100 | 72.22% | 73.81% | +1.59 |
+| 1,300 | 73.11% | 73.83% | +0.72 |
+| 1,500 | 74.67% | 75.11% | +0.44 |
+| 1,700 | 76.00% | 76.00% | +0.00 |
+| 1,900 | 77.11% | 76.00% | -1.11 |
+| 2,100 | 78.00% | 77.16% | -0.84 |
+
+Selected weights varied substantially by fold (two folds chose Cost-only everywhere); six of seven nominal paired 95% intervals touched or contained zero, and the 2,100-token interval was negative without multiplicity correction. BCHF did **not** exceed the strongest earlier Route A/E validation reference at any of these budgets. The results are **exploratory**: offline matching uses observed validation generation costs *after* ranking, confidence intervals condition on selected policies, Router Prefill is excluded, and the same validation set had been studied previously. **No independent test or deployable budget-control result is claimed.**
+
+Full fold weights, paired confidence intervals, baseline comparisons, caveats, and archive locations: [BCHF experiment report](ROUTE_E_BUDGET_FUSION.md). **Research decision:** stop this fusion sweep; retain it as a negative/inconclusive Router Strategy ablation.
+
+## 11. Maintainer notes
 
 - The original three separate files (frozen probe, prefix ablation, and equal-budget report) were consolidated into **this file** to avoid maintaining overlapping protocols.
 - Keep [ROUTE_A_PLAN.md](ROUTE_A_PLAN.md) as the historical record for the original five ModernBERT objectives and the shared chart.
