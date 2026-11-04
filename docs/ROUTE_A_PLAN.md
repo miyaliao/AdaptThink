@@ -333,3 +333,37 @@ Using the **same frozen DeepSeek P1 Assistant-only final hidden states**, the P2
 **Takeaway:** Cost-only beats Frozen P1 at **5 of 7** listed budgets (especially 900 tokens, **+3.77 pp**), but is worse at 1,500–1,700. Ridge + Cost does better in parts of the medium/high-budget range; Logistic + Cost gives no stable additional gain. These are **exploratory validation-only dense replay curves**, with observed validation output lengths used *after ranking* to match budgets. Predicted-budget control remains biased; no overall statistically robust or deployable improvement is claimed.
 
 Detailed methods/results: [P2 Token-aware](https://github.com/miyaliao/AdaptThink/blob/feature/route-e-token-aware-20261103/docs/ROUTE_E_TOKEN_AWARE.md), [Cost-only](https://github.com/miyaliao/AdaptThink/blob/feature/route-e-token-aware-20261103/docs/ROUTE_E_COST_ONLY.md), [Quality fusion](https://github.com/miyaliao/AdaptThink/blob/feature/route-e-token-aware-20261103/docs/ROUTE_E_QUALITY_FUSION.md).
+
+### 8.5 Prompt-aware representation ablation (2026-11-04)
+
+**Outcome: no consistent improvement over frozen DeepSeek P1.** This follow-up tested whether short, task-aware **Assistant-side** suffixes could improve the final hidden-state representation for Thinking/NoThinking routing without changing the DeepSeek weights or generating new answers.
+
+- **P1 reference:** user chat template + `<｜Assistant｜>` (no added suffix).
+- **General:** `Problem summary in one word: "` (7 added tokens).
+- **Difficulty:** `Problem difficulty in one word: "` (7 added tokens).
+- **Routing:** `Reasoning mode in one word: "` (8 added tokens).
+
+The actual DeepSeek tokenizer audit **passed on all 3,450 input questions** (3,000 train, 450 validation): the three new suffixes had the same final token ID (`330`) for every sample; their appended lengths differed by at most one token. Each variant used a frozen DeepSeek-R1-Distill-Qwen-1.5B **final-layer, last-valid-token 1,536-d hidden state** and an independently fitted **Logistic Regression** head (train-only standardization, BCE + L2 `1e-3`, LBFGS). The original strict labels, dataset split, generation outcomes, and evaluation protocol were unchanged. The CPU audit, smoke tests, and three full extraction/probe runs completed. New feature caches remain server-local under `outputs/route_e/task_prompt/`.
+
+**Equal mean *generated*-token budgets — strict 450-question validation (expected offline accuracy):**
+
+| Budget (tokens/question) | Global Random | ModernBERT Full FT | Frozen P1 | General | Difficulty | Routing |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 900 | 69.94% | 72.22% | 70.67% | 71.78% | 71.33% | 70.22% |
+| 1,100 | 71.24% | 73.52% | **74.22%** | 71.33% | 72.17% | 71.78% |
+| 1,300 | 72.54% | 74.22% | **75.33%** | 73.56% | 73.11% | 72.44% |
+| 1,500 | 73.84% | 75.56% | **76.44%** | 74.76% | 73.81% | 73.33% |
+| 1,700 | 75.14% | 75.78% | **76.89%** | 76.44% | 74.67% | 75.11% |
+| 1,900 | 76.44% | 76.63% | 76.67% | 76.51% | 75.65% | **77.11%** |
+| 2,100 | 77.74% | 77.56% | 77.78% | 77.78% | 77.56% | **78.44%** |
+
+**Mean accuracy over the full 900–2,100 budget interval** (integrated dense curve / interval width; not routing ROC AUC):
+
+| Global Random | ModernBERT Full FT | **Frozen P1** | General | Difficulty | Routing |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 73.837% | 75.011% | **75.780%** | 74.542% | 74.264% | 74.155% |
+
+**Verification:** The 450-score dense replay reproduced FT Classification at 50% NoThinking (**73.5556%**, **1,091.849** tokens) and frozen P1 (**76.4444%**, **1,427.05** tokens). The comparison used all **451 top-`k` routing policies** with cost-adjacent interpolation; the reported seven budgets are samples of a fuller generated-token curve. **None of General/Difficulty/Routing exceeded P1 in mean curve accuracy** over 900–2,100. Routing was higher at 1,900 and 2,100, but not overall. No additional prompt sweep is planned based on this result.
+
+**Reproduction files:** [experiment plan](ROUTE_E_TASK_PROMPT_PLAN.md), `scripts/route_e_task_prompts.py`, `scripts/route_e_task_prompt_curve.py`. The validated full replay saved `results/route_e/task_prompt/curve/accuracy_token_curve.{png,svg,json,csv}` and `budget_points.csv` **on TC1**; these figure/result files are not yet tracked in GitHub. The curves use **mean generated tokens**, *not* per-decode `max_new_tokens` sweeps, and exclude additional encoder-prefill/router overhead. These are exploratory validation results, not a held-out test.
+
