@@ -1,0 +1,635 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1439.9587"
+   height="291.19278"
+   viewBox="0 0 1439.9588 291.19277"
+   role="img"
+   aria-labelledby="title description"
+   version="1.1"
+   id="svg48"
+   sodipodi:docname="adaptthink_architecture.svg"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <sodipodi:namedview
+     id="namedview48"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1.047893"
+     inkscape:cx="678.98154"
+     inkscape:cy="42.466168"
+     inkscape:window-width="2240"
+     inkscape:window-height="1294"
+     inkscape:window-x="-11"
+     inkscape:window-y="-11"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg48" />
+  <title
+     id="title">AdaptThink — Representation-Aware Adaptive Reasoning</title>
+  <desc
+     id="description">A horizontal architecture diagram. A math question is encoded by either ModernBERT or frozen DeepSeek hidden states. A lightweight linear, logistic, or MLP router scores the representation, selects NoThinking or Thinking, and runs the selected mode on the same frozen DeepSeek-R1-Distill-Qwen-1.5B.</desc>
+  <defs
+     id="defs3">
+    <filter
+       id="softShadow"
+       x="-0.016071428"
+       y="-0.016071428"
+       width="1.0321429"
+       height="1.0321429">
+      <feDropShadow
+         dx="0"
+         dy="4"
+         stdDeviation="7"
+         flood-color="#25344B"
+         flood-opacity="0.07" />
+    </filter>
+    <marker
+       id="arrowSlate"
+       viewBox="0 0 10 10"
+       refX="8.5"
+       refY="5"
+       markerWidth="7"
+       markerHeight="7"
+       orient="auto-start-reverse">
+      <path
+         d="M 0,0 10,5 0,10 Z"
+         fill="#65758d"
+         id="path1" />
+    </marker>
+    <marker
+       id="arrowGreen"
+       viewBox="0 0 10 10"
+       refX="8.5"
+       refY="5"
+       markerWidth="7"
+       markerHeight="7"
+       orient="auto-start-reverse">
+      <path
+         d="M 0,0 10,5 0,10 Z"
+         fill="#168a78"
+         id="path2" />
+    </marker>
+    <marker
+       id="arrowAmber"
+       viewBox="0 0 10 10"
+       refX="8.5"
+       refY="5"
+       markerWidth="7"
+       markerHeight="7"
+       orient="auto-start-reverse">
+      <path
+         d="M 0,0 10,5 0,10 Z"
+         fill="#c98127"
+         id="path3" />
+    </marker>
+    <marker
+       id="arrowSlate-8"
+       viewBox="0 0 10 10"
+       refX="8.5"
+       refY="5"
+       markerWidth="7"
+       markerHeight="7"
+       orient="auto-start-reverse">
+      <path
+         d="M 0,0 10,5 0,10 Z"
+         fill="#65758d"
+         id="path1-2" />
+    </marker>
+  </defs>
+  <!-- White, compact canvas; native vectors and editable text -->
+  <rect
+     x="62.754055"
+     y="26.787754"
+     width="1313.5376"
+     height="236.9599"
+     rx="17.355503"
+     fill="#ffffff"
+     stroke="#e2e9f2"
+     stroke-width="1.44964"
+     id="rect3" />
+  <g
+     font-family="Inter, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+     id="g48"
+     transform="translate(61.837411,-120.4835)">
+    <!-- Header -->
+    <g
+       transform="translate(41,29)"
+       id="g4" />
+    <!-- Stage labels -->
+    <!-- Connectors underneath the cards -->
+    <path
+       d="m 205,263 h 63"
+       fill="none"
+       stroke="#65758d"
+       stroke-width="2.6"
+       stroke-linecap="round"
+       marker-end="url(#arrowSlate)"
+       id="path10" />
+    <path
+       d="M 897.78728,264.76713 H 951.3696"
+       fill="none"
+       stroke="#65758d"
+       stroke-width="2.3978"
+       stroke-linecap="round"
+       marker-end="url(#arrowSlate-8)"
+       id="path10-5"
+       style="marker-end:url(#arrowSlate-8)" />
+    <path
+       d="m 559.29335,263.67479 h 71"
+       fill="none"
+       stroke="#65758d"
+       stroke-width="2.6"
+       stroke-linecap="round"
+       marker-end="url(#arrowSlate)"
+       id="path11" />
+    <path
+       d="m 1007.4815,248.37708 c 38.8148,0 25.4722,-15.99792 61.861,-15.99792"
+       fill="none"
+       stroke="#168a78"
+       stroke-width="1.79305"
+       stroke-linecap="round"
+       marker-end="url(#arrowGreen)"
+       id="path13" />
+    <path
+       d="m 1009.8164,268.33276 c 37.4083,0 24.5492,26.63102 59.6196,26.63102"
+       fill="none"
+       stroke="#c98127"
+       stroke-width="2.08913"
+       stroke-linecap="round"
+       marker-end="url(#arrowAmber)"
+       id="path14" />
+    <!-- Input card -->
+    <rect
+       x="44"
+       y="163"
+       width="161"
+       height="199"
+       rx="17"
+       fill="#f7f9fc"
+       stroke="#dce5ef"
+       stroke-width="1.6"
+       filter="url(#softShadow)"
+       id="rect14" />
+    <!-- stack of question sheets -->
+    <g
+       fill="#ffffff"
+       stroke="#5a6c84"
+       stroke-width="2.1"
+       stroke-linejoin="round"
+       id="g18">
+      <path
+         d="m 81,202 h 56 l 20,20 v 67 H 81 Z"
+         transform="translate(-15,10)"
+         id="path15" />
+      <path
+         d="m 81,202 h 56 l 20,20 v 67 H 81 Z"
+         transform="translate(-8,5)"
+         id="path16" />
+      <path
+         d="m 81,202 h 56 l 20,20 v 67 H 81 Z"
+         id="path17" />
+      <path
+         d="m 137,202 v 20 h 20"
+         fill="none"
+         id="path18" />
+    </g>
+    <g
+       stroke="#718199"
+       stroke-width="3"
+       stroke-linecap="round"
+       id="g21">
+      <path
+         d="m 96,238 h 45"
+         id="path19" />
+      <path
+         d="m 96,252 h 45"
+         id="path20" />
+      <path
+         d="m 96,266 h 34"
+         id="path21" />
+    </g>
+    <text
+       x="124.5"
+       y="332"
+       text-anchor="middle"
+       font-size="17px"
+       font-weight="730"
+       fill="#1b2c45"
+       id="text21">Math Question</text>
+    <text
+       x="124.5"
+       y="351"
+       text-anchor="middle"
+       font-size="12.5px"
+       fill="#66778f"
+       id="text22">Input problem x</text>
+    <!-- Representation outer module -->
+    <rect
+       x="282"
+       y="151"
+       width="336"
+       height="218"
+       rx="17"
+       fill="#f4f8ff"
+       stroke="#c9d9f0"
+       stroke-width="1.65"
+       filter="url(#softShadow)"
+       id="rect22" />
+    <!-- Encoder 1 -->
+    <rect
+       x="302.24112"
+       y="194.2411"
+       width="237.32802"
+       height="139.77432"
+       rx="9.6214037"
+       fill="#ffffff"
+       stroke="#d1dff0"
+       stroke-width="1.88224"
+       id="rect24" />
+    <rect
+       x="316"
+       y="239"
+       width="37"
+       height="37"
+       rx="10"
+       fill="#dcebff"
+       id="rect25" />
+    <g
+       stroke="#3976c4"
+       stroke-width="2"
+       fill="none"
+       stroke-linecap="round"
+       stroke-linejoin="round"
+       id="g27"
+       transform="translate(0,32)">
+      <circle
+         cx="328"
+         cy="219"
+         r="3"
+         id="circle25" />
+      <circle
+         cx="341"
+         cy="219"
+         r="3"
+         id="circle26" />
+      <circle
+         cx="334.5"
+         cy="232"
+         r="3"
+         id="circle27" />
+      <path
+         d="m 331,221 2,8 m 6,-7 -2,7"
+         id="path27" />
+    </g>
+    <text
+       x="367"
+       y="263.5"
+       font-size="16.8px"
+       font-weight="750"
+       fill="#1f3958"
+       id="text27"
+       style="font-size:13.3333px">ModernBERT</text>
+    <!-- Encoder 2 -->
+    <rect
+       x="316"
+       y="289"
+       width="37"
+       height="37"
+       rx="10"
+       fill="#dcebff"
+       id="rect29" />
+    <g
+       stroke="#3976c4"
+       stroke-width="1.85"
+       fill="none"
+       stroke-linecap="round"
+       id="g30"
+       transform="translate(0,8)">
+      <path
+         d="m 323,295 c 5,-6 10,8 15,0 4,-7 8,1 11,-3"
+         id="path29" />
+      <path
+         d="m 323,304 c 5,-6 10,8 15,0 4,-7 8,1 11,-3"
+         opacity="0.68"
+         id="path30" />
+    </g>
+    <text
+       x="367"
+       y="314.5"
+       font-size="16.7px"
+       font-weight="750"
+       fill="#1f3958"
+       id="text30"
+       style="font-size:13.3333px">DeepSeek Hidden States</text>
+    <text
+       x="421.09744"
+       y="219.998"
+       text-anchor="middle"
+       font-size="12.2px"
+       font-weight="650"
+       fill="#5278a5"
+       id="text32"
+       style="font-size:16px">Question representation h(x)</text>
+    <!-- Router module -->
+    <rect
+       x="698"
+       y="179"
+       width="225"
+       height="169"
+       rx="17"
+       fill="#f8f4ff"
+       stroke="#d8c7f0"
+       stroke-width="1.65"
+       filter="url(#softShadow)"
+       id="rect32" />
+    <text
+       x="732.99274"
+       y="222.16553"
+       text-anchor="middle"
+       font-size="13px"
+       font-weight="740"
+       letter-spacing="0.5"
+       fill="#7b61a8"
+       id="text33"
+       style="font-size:16px">ROUTING SCORE</text>
+    <text
+       x="770.68744"
+       y="257.37393"
+       text-anchor="middle"
+       font-size="26px"
+       font-weight="670"
+       fill="#43315f"
+       font-style="italic"
+       id="text34">s(x) = f(h(x))</text>
+    <g
+       font-size="11.6px"
+       font-weight="670"
+       text-anchor="middle"
+       id="g37"
+       transform="translate(-39.812559,1.3739456)">
+      <rect
+         x="717"
+         y="273"
+         width="51"
+         height="27"
+         rx="9"
+         fill="#e9ddf9"
+         id="rect34" />
+      <text
+         x="742.5"
+         y="291"
+         fill="#6e5599"
+         id="text35">Linear</text>
+      <rect
+         x="774"
+         y="273"
+         width="69"
+         height="27"
+         rx="9"
+         fill="#e9ddf9"
+         id="rect35" />
+      <text
+         x="808.5"
+         y="291"
+         fill="#6e5599"
+         id="text36">Logistic</text>
+      <rect
+         x="849"
+         y="273"
+         width="55"
+         height="27"
+         rx="9"
+         fill="#e9ddf9"
+         id="rect36" />
+      <text
+         x="876.5"
+         y="291"
+         fill="#6e5599"
+         id="text37">MLP</text>
+    </g>
+    <text
+       x="748.26147"
+       y="322.60245"
+       text-anchor="middle"
+       font-size="12.8px"
+       font-weight="570"
+       fill="#786a8e"
+       id="text38">Predict mode preference</text>
+    <!-- Split decision / switch -->
+    <circle
+       cx="982"
+       cy="262"
+       r="28"
+       fill="#ffffff"
+       stroke="#9daabd"
+       stroke-width="1.8"
+       filter="url(#softShadow)"
+       id="circle38" />
+    <path
+       d="m 968,262 21,-13"
+       stroke="#50647d"
+       stroke-width="2.2"
+       stroke-linecap="round"
+       id="path38" />
+    <circle
+       cx="968"
+       cy="262"
+       r="4.5"
+       fill="#ffffff"
+       stroke="#50647d"
+       stroke-width="2"
+       id="circle39" />
+    <circle
+       cx="992"
+       cy="247"
+       r="4.5"
+       fill="#e2f5f0"
+       stroke="#168a78"
+       stroke-width="1.9"
+       id="circle40" />
+    <circle
+       cx="992"
+       cy="277"
+       r="4.5"
+       fill="#fff0e0"
+       stroke="#c98127"
+       stroke-width="1.9"
+       id="circle41" />
+    <text
+       x="982"
+       y="309"
+       text-anchor="middle"
+       font-size="11.5px"
+       font-weight="600"
+       fill="#64758b"
+       id="text41">Select</text>
+    <!-- Two execution modes -->
+    <rect
+       x="1068"
+       y="202"
+       width="324"
+       height="78"
+       rx="15"
+       fill="#effaf7"
+       stroke="#b9e7dc"
+       stroke-width="1.6"
+       filter="url(#softShadow)"
+       id="rect41" />
+    <rect
+       x="1083"
+       y="217"
+       width="47"
+       height="47"
+       rx="12"
+       fill="#d5f3ea"
+       id="rect42" />
+    <path
+       d="m 1109,224 -14,21 h 10 l -3,13 16,-23 h -10 z"
+       fill="#148c79"
+       stroke="#148c79"
+       stroke-width="1"
+       stroke-linejoin="round"
+       id="path42" />
+    <text
+       x="1140.6143"
+       y="229.15173"
+       font-size="18.8px"
+       font-weight="780"
+       fill="#116a5c"
+       id="text42">NoThinking</text>
+    <text
+       x="1143"
+       y="255"
+       font-size="13.3px"
+       fill="#4a8176"
+       id="text43">lower token cost</text>
+    <rect
+       x="1068"
+       y="281"
+       width="324"
+       height="78"
+       rx="15"
+       fill="#fff8ef"
+       stroke="#f1d6b3"
+       stroke-width="1.6"
+       filter="url(#softShadow)"
+       id="rect43" />
+    <rect
+       x="1083"
+       y="280"
+       width="47"
+       height="47"
+       rx="12"
+       fill="#ffead1"
+       id="rect44" />
+    <g
+       fill="none"
+       stroke="#c78530"
+       stroke-width="1.9"
+       stroke-linecap="round"
+       stroke-linejoin="round"
+       id="g45"
+       transform="translate(0,-12)">
+      <path
+         d="m 1105,302 c -9,0 -13,8 -10,14 -5,5 0,14 7,14 h 13 c 7,0 11,-7 6,-13 3,-7 -3,-15 -10,-15 -2,0 -4,0 -6,0 z"
+         id="path44" />
+      <path
+         d="m 1106,305 v 22 m -7,-13 6,3 m 9,-9 -7,5 m 8,9 -8,-3"
+         id="path45" />
+    </g>
+    <text
+       x="1143"
+       y="298"
+       font-size="18.8px"
+       font-weight="780"
+       fill="#a56a22"
+       id="text45">Thinking</text>
+    <text
+       x="1143"
+       y="322"
+       font-size="13.3px"
+       fill="#a67f50"
+       id="text46">CoT reasoning</text>
+    <!-- Same backbone disclosure -->
+    <!-- Footer: single, concise research framing -->
+    <text
+       x="485.01166"
+       y="264.4498"
+       font-size="16.8px"
+       font-weight="750"
+       fill="#1f3958"
+       id="text48-9"><tspan
+         sodipodi:role="line"
+         id="tspan48"
+         x="485.01166"
+         y="264.4498">OR</tspan><tspan
+         sodipodi:role="line"
+         id="tspan49"
+         x="485.01166"
+         y="285.4498" /></text>
+    <rect
+       x="312.53107"
+       y="235.63765"
+       width="155.34224"
+       height="45.51252"
+       rx="6.297657"
+       fill="#ffffff"
+       stroke="#d1dff0"
+       stroke-width="0.868954"
+       id="rect50"
+       style="fill:none;stroke-width:1.069;stroke-linecap:butt;stroke-dasharray:1.069, 1.069;stroke-dashoffset:0" />
+    <rect
+       x="311.24564"
+       y="286.48077"
+       width="218.14714"
+       height="42.685078"
+       rx="8.8438015"
+       fill="#ffffff"
+       stroke="#d1dff0"
+       stroke-width="0.997236"
+       id="rect52"
+       style="fill:none;stroke-width:1.197;stroke-dasharray:1.197, 1.197;stroke-dashoffset:0" />
+    <rect
+       x="653.21277"
+       y="196.09219"
+       width="237.32802"
+       height="139.77432"
+       rx="9.6214037"
+       fill="#ffffff"
+       stroke="#d1dff0"
+       stroke-width="1.88224"
+       id="rect53"
+       style="fill:none;stroke:#ded1f0;stroke-opacity:1" />
+  </g>
+  <path
+     style="fill:#e3f4d7;stroke:#ded1f0;stroke-width:1.197;stroke-linecap:butt;stroke-dasharray:1.197, 1.197;stroke-dashoffset:0;stroke-opacity:1"
+     d="m 1423.8096,-136.16738 7.6343,13.36014"
+     id="path60" />
+  <metadata
+     id="metadata60">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>AdaptThink — Representation-Aware Adaptive Reasoning</dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <path
+     style="fill:#e3f4d7;stroke:#ded1f0;stroke-width:1.197;stroke-linecap:butt;stroke-dasharray:1.197, 1.197;stroke-dashoffset:0;stroke-opacity:1"
+     d="m 1040.1825,-141.2358 h 5.7258"
+     id="path62" />
+  <path
+     style="fill:#e3f4d7;stroke:#ded1f0;stroke-width:1.197;stroke-linecap:butt;stroke-dasharray:1.197, 1.197;stroke-dashoffset:0;stroke-opacity:1"
+     d="m 1085.9888,-135.51002 31.4918,22.9031"
+     id="path63" />
+</svg>
