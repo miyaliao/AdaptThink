@@ -1,5 +1,10 @@
 # Route A — External Router via ModernBERT
 
+<p align="center">
+  <img src="../assets/adaptthink_architecture.svg" width="100%" alt="External router architecture: mathematical question representation via ModernBERT or DeepSeek hidden states, routing score, and Thinking/NoThinking decision" />
+</p>
+
+
 Status: **five Route A Router objectives evaluated as of 2026-11-02**, followed by **Route E frozen-representation, prompt-prefix, and token-aware routing validation experiments on 2026-11-03** (Section 8). Within the original five objectives, Classification had the strongest reported cost-matched uplift; Route E results are analyzed separately at common output-token budgets. SC4001 deadline: **2026-11-16**.
 
 ## 1. Research question
