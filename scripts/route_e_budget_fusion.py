@@ -186,7 +186,8 @@ def policy_at_budget(rows, scores, budget, mode="observed", predicted_lengths=No
         base_tokens = float(np.mean(predicted_lengths[:, 0]))
         diff = (predicted_lengths[:, 1] - predicted_lengths[:, 0]) / n
         costs = base_tokens + np.r_[0, np.cumsum(diff[order])]
-        curve = [{"tokens": float(v), "fraction": k/n} for k, v in enumerate(costs)]
+        curve = [{"tokens": float(v), "fraction": k/n, "accuracy": 0.0}
+                 for k, v in enumerate(costs)]  # placeholder: cutoff never reads outcomes
     else:
         raise ValueError(f"Unknown mode: {mode}")
     try:
@@ -227,34 +228,59 @@ def bucket(budget):
 
 
 def choose_weights(rows, q, c, budgets, alphas, penalty):
-    """Choose alpha using DEVELOPMENT rows only; never see held-out fold labels."""
-    scores = {}
-    for a in alphas:
-        for b in budgets:
-            trial = policy_at_budget(rows, fusion_scores(q, c, a), b)
-            _assert(trial is not None, "Development budget unreachable")
-            scores[(a, b)] = trial[0]["accuracy"]
-    fixed = max(alphas, key=lambda a: (np.mean([scores[a, b] for b in budgets]), -abs(a-.5)))
-    best = None
-    # All 5^3 combinations, with a predeclared small smoothness penalty.
-    for lo, mid, hi in itertools.product(alphas, repeat=3):
-        coeff = {"low":lo, "medium":mid, "high":hi}
-        objective = float(np.mean([scores[coeff[bucket(b)], b] for b in budgets]))
-        objective -= penalty * (abs(lo-mid) + abs(mid-hi))
-        rank = (objective, -abs(lo-mid)-abs(mid-hi))
-        if best is None or rank > best[0]:
-            best = (rank, coeff)
-    hard = None
-    for lo, mid, hi in itertools.product((0.,1.), repeat=3):
-        coeff = {"low":lo, "medium":mid, "high":hi}
-        value = float(np.mean([scores[coeff[bucket(b)], b] for b in budgets]))
-        value -= penalty * (abs(lo-mid) + abs(mid-hi))
-        rank = (value, -abs(lo-mid)-abs(mid-hi))
-        if hard is None or rank > hard[0]:
-            hard = (rank, coeff)
-    return {"best_fixed": fixed, "piecewise": best[1], "hard_switch": hard[1],
-            "dev_accuracy": {str(a): {str(b): scores[a,b] for b in budgets} for a in alphas}}
+    """Select weights on development data using ONLY jointly reachable budgets.
 
+    A development fold may have narrower measured-token endpoints than the
+    full validation dataset. Never extrapolate accuracy past either endpoint,
+    and never crash just because a requested high budget is unreachable.
+    All candidate alphas are compared on the SAME feasible budget subset.
+    Unrepresented budget buckets fall back to the selected fixed alpha.
+    """
+    scores = {}
+    available = []
+    unavailable = []
+    for b in budgets:
+        candidate = {}
+        for alpha in alphas:
+            trial = policy_at_budget(rows, fusion_scores(q, c, alpha), b)
+            if trial is None:
+                break
+            candidate[alpha] = trial[0]["accuracy"]
+        if len(candidate) != len(alphas):
+            unavailable.append(b)
+            continue
+        available.append(b)
+        for alpha, accuracy in candidate.items():
+            scores[(alpha, b)] = accuracy
+    _assert(bool(available), "No jointly reachable development budgets")
+    fixed = max(alphas, key=lambda alpha: (
+        float(np.mean([scores[alpha, b] for b in available])),
+        -abs(alpha - .5)))
+    represented = {bucket(b) for b in available}
+
+    def pick(options):
+        best = None
+        # No data for a bucket => inherit fixed alpha, rather than tune noise.
+        candidates = [options if name in represented else (fixed,)
+                      for name in ("low", "medium", "high")]
+        for lo, mid, hi in itertools.product(*candidates):
+            weights = {"low": lo, "medium": mid, "high": hi}
+            objective = float(np.mean([
+                scores[(weights[bucket(b)], b)] for b in available]))
+            objective -= penalty * (abs(lo - mid) + abs(mid - hi))
+            rank = (objective, -abs(lo - mid) - abs(mid - hi))
+            if best is None or rank > best[0]:
+                best = (rank, weights)
+        return best[1]
+
+    return {"best_fixed": fixed,
+            "piecewise": pick(alphas),
+            "hard_switch": pick((0., 1.)),
+            "available_budgets": available,
+            "unreachable_budgets": unavailable,
+            "dev_accuracy": {str(alpha): {
+                str(b): scores[(alpha, b)] for b in available}
+                for alpha in alphas}}
 
 def conditional_ci(a, b, reps, rng):
     """Paired CI on *frozen* mixed policies (not training/selection uncertainty)."""
@@ -292,7 +318,9 @@ def run(rows, q, c, lengths, budgets, alphas, folds, seed, penalty, bootstrap,
     for a in alphas:
         for b in budgets:
             result = policy_at_budget(rows, fusion_scores(q, c, a), b)
-            all_sweep.append({"alpha": a, "budget": b, **result[0]})
+            all_sweep.append({"alpha": a, "budget": b,
+                              "available": result is not None,
+                              **({} if result is None else result[0])})
     n = len(rows)
     oof = {b: {name: np.full(n, np.nan) for name in
                ("fixed", "adaptive", "hard_switch")} for b in budgets}
@@ -302,6 +330,8 @@ def run(rows, q, c, lengths, budgets, alphas, folds, seed, penalty, bootstrap,
         devrows = [rows[i] for i in dev]
         selected = choose_weights(devrows, q[dev], c[dev], budgets, alphas, penalty)
         selection_records.append({"fold":f,"heldout_n":len(heldout),
+                                  "dev_available_budgets":selected["available_budgets"],
+                                  "dev_unreachable_budgets":selected["unreachable_budgets"],
                                   "fixed":selected["best_fixed"],
                                   "piecewise":selected["piecewise"],
                                   "hard_switch":selected["hard_switch"]})
@@ -346,18 +376,22 @@ def render_plots(folder, sweep, cv, budgets, alphas):
     except ImportError:
         print("BCHF_PLOT_SKIPPED: matplotlib unavailable")
         return
-    arr = np.array([[next(r["accuracy"] for r in sweep if r["alpha"]==a and r["budget"]==b)
-                     for b in budgets] for a in alphas]) * 100
+    arr = np.array([[next((r["accuracy"] for r in sweep
+                          if r["alpha"]==a and r["budget"]==b and r["available"]),
+                          float("nan")) for b in budgets] for a in alphas]) * 100
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    im = ax.imshow(arr, aspect="auto", cmap="viridis")
+    im = ax.imshow(np.ma.masked_invalid(arr), aspect="auto", cmap="viridis")
     ax.set(xticks=range(len(budgets)),xticklabels=budgets,
            yticks=range(len(alphas)),yticklabels=[f"{a:.2f}" for a in alphas],
            xlabel="Mean generated tokens (observed-cost matched)",
            ylabel="Classification weight α",title="Fixed fusion weight sweep (exploratory)")
     for i in range(len(alphas)):
         for j in range(len(budgets)):
-            ax.text(j,i,f"{arr[i,j]:.2f}",ha="center",va="center",fontsize=8,
-                    color="white" if arr[i,j] < (arr.min()+arr.max())/2 else "black")
+            if np.isfinite(arr[i,j]):
+                ax.text(j,i,f"{arr[i,j]:.2f}",ha="center",va="center",fontsize=8,
+                        color="white" if arr[i,j] < np.nanmean(arr) else "black")
+            else:
+                ax.text(j,i,"N/A",ha="center",va="center",fontsize=8)
     fig.colorbar(im,ax=ax,label="Accuracy (%)")
     fig.tight_layout()
     for ext in ("png","svg"):
@@ -396,8 +430,12 @@ def save_report(folder, sweep, records, cv, metadata, config, budgets, alphas,
     (folder/"frozen_policy.json").write_text(json.dumps(frozen_policy,
         ensure_ascii=False, indent=2)+"\n",encoding="utf-8")
     with (folder/"fixed_alpha_sweep.csv").open("w",newline="",encoding="utf-8") as h:
-        w=csv.writer(h);w.writerow(["budget","alpha","accuracy_pct","tokens","nt_fraction"])
-        for r in sweep:w.writerow([r["budget"],r["alpha"],100*r["accuracy"],r["actual_tokens"],r["nt_fraction"]])
+        w=csv.writer(h);w.writerow(["budget","alpha","available","accuracy_pct","tokens","nt_fraction"])
+        for r in sweep:
+            w.writerow([r["budget"],r["alpha"],r["available"],
+                        100*r["accuracy"] if r["available"] else "",
+                        r["actual_tokens"] if r["available"] else "",
+                        r["nt_fraction"] if r["available"] else ""])
     with (folder/"crossfit_summary.csv").open("w",newline="",encoding="utf-8") as h:
         w=csv.writer(h);w.writerow(["budget","method","observed_accuracy_pct","observed_tokens",
                       "predicted_accuracy_pct","actual_tokens_predicted_policy","predicted_tokens","nt_fraction_predicted_policy"])
