@@ -54,6 +54,26 @@ class BudgetFusionTests(unittest.TestCase):
         self.assertEqual(len(sweep),20)
         self.assertTrue(all('legacy_logistic_plus_cost' not in r['methods'] for r in summary))
 
+    def test_development_fold_unreachable_budget_is_skipped(self):
+        # A development subset can have a narrower cost range than the
+        # full validation population; no extrapolation or held-out peeking.
+        selection = f.choose_weights(
+            self.rows[:18], self.q[:18], self.c[:18],
+            (900, 1200, 2400, 3000), f.ALPHAS, .0025)
+        self.assertIn(900, selection["available_budgets"])
+        self.assertIn(3000, selection["unreachable_budgets"])
+        self.assertEqual(selection["piecewise"]["high"],
+                         selection["best_fixed"])
+        # Selection does not use the held-out examples.
+        self.assertEqual(selection, f.choose_weights(
+            self.rows[:18], self.q[:18], self.c[:18],
+            (900, 1200, 2400, 3000), f.ALPHAS, .0025))
+
+    def test_development_all_budgets_unreachable_fails_clearly(self):
+        with self.assertRaisesRegex(ValueError, "No jointly reachable"):
+            f.choose_weights(self.rows, self.q, self.c,
+                             (100000,), f.ALPHAS, .0025)
+
     def test_train_only_stats(self):
         mu,sigma=f.normalizer(np.array([1.,2.,3.]))
         self.assertEqual(mu,2.)
