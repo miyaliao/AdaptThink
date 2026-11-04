@@ -57,6 +57,23 @@ S_NT(x, B) = α(B) q(x) + (1−α(B)) c(x)
 
 Paired bootstrap uncertainty is **conditional on the fitted, selected policies and cutoffs**, unadjusted for selecting multiple budgets/weights. Router prefill and inference overhead are not included. The final 485-question test remains untouched.
 
+### Budget reachability and predicted-policy safeguards
+
+A development fold does not necessarily span all seven full-validation token
+budgets. The selector now marks any budget that is not reachable for **every**
+candidate alpha as unavailable for that fold, and compares all candidates on
+the *same* feasible subset. If a low/mid/high bucket has no reachable
+development budget, its weight inherits the fold's best fixed alpha rather
+than extrapolating. Per-fold `dev_available_budgets` and
+`dev_unreachable_budgets` are archived with the result. A fold with no
+jointly reachable budgets fails clearly; it is not assigned an invented score.
+
+The predicted-token policy supplies a zero-valued placeholder accuracy to
+the shared cost-interpolation helper **solely for threshold selection**.
+Reported accuracy is recomputed from actual outcomes only *after* the
+predicted-cost routing policy is frozen; actual output lengths are never
+used to choose that threshold.
+
 ## 4. Run on NTU TC1 (CPU-only)
 
 On a TC1 login or appropriate CPU Slurm allocation, use the existing repo environment:
