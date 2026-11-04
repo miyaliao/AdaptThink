@@ -50,7 +50,7 @@ S_NT(x, B) = α(B) q(x) + (1−α(B)) c(x)
    - **Piecewise α(B):** one α for low (`≤1100`), medium (`1100<B≤1700`), and high (`>1700`) budgets. Selection maximizes mean development accuracy over the seven listed budgets with predetermined `0.0025` accuracy penalty for adjacent α jumps.
    - **Hard Switch:** same three budget groups, α restricted to `{0,1}`.
 3. **OOF ranking:** each held-out question gets the α selected without its own outcome; combine scores from all five held-out folds and rank the full 450 questions once at each budget. No α selection uses its own fold's labels, although the overall system was designed after examining this validation dataset in earlier experiments.
-4. **Reference routers:** Classification-only, Cost-only, and **historical frozen Logistic+Cost and Ridge+Cost** fixed-lambda=0.05 priorities (computed without retraining). The new method's key comparison is against development-selected **Best Fixed α**, not a hand-picked weight.
+4. **Reference routers:** Classification-only, Cost-only, **historical frozen Logistic+Cost and Ridge+Cost** fixed-lambda=0.05 priorities, plus dense Full FT ModernBERT Classification when its original score file is available (reproduction required; no approximate fallback). The new method's key comparison is against development-selected **Best Fixed α**, not a hand-picked weight.
 5. **Diagnostics:** the score order is evaluated under two *separate* cutoff rules:
    - `observed`: historical descriptive dense replay using observed validation output lengths **after sorting** to exactly match expected mean output-token budgets. **Not deployable.**
    - `predicted`: choose cutoff using **only** saved predicted per-mode token lengths. Then compute realized accuracy, mean actual tokens, and NT share. If a budget is predicted unreachable, report missing; do not secretly use actual lengths to force it.
@@ -77,6 +77,7 @@ Use `--no-plot` if Matplotlib is absent. Use `--overwrite` only to replace **thi
 - `report.json` — strict provenance, full fixed sweep, OOF α selection, historical fixed-lambda baselines, per-budget and per-dataset metrics, and limitations.
 - `fixed_alpha_sweep.csv` and `alpha_budget_heatmap.svg/png` — five α settings at seven budgets.
 - `crossfit_summary.csv` and `crossfit_accuracy_token.svg/png` — OOF Best Fixed vs Piecewise vs Hard Switch and baselines, with both predicted-budget and descriptive observed-budget views.
+- `frozen_policy.json` — a development-selected α(B) configuration, standardized by **train-only** statistics, reserved for a **future** independent evaluation. It is not a tested production policy.
 
 Expected log: `BCHF_SELFTEST_PASS`, then `BCHF_BUDGET ...`, ending with `BCHF_DONE`.
 

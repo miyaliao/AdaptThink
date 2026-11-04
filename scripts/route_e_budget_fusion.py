@@ -120,6 +120,15 @@ def data_inputs():
     _assert(np.isfinite(q).all() and np.isfinite(c).all(), "Nonfinite fusion features")
     legacy = legacy_score_controls(val, logits_train, logits_val, ct, cv,
                                    predict_delta(Xtr), predict_delta(Xva))
+    ft_path = ROOT / "outputs/external_modernbert/classification/val_predictions.jsonl"
+    if ft_path.is_file():
+        from route_e_equal_budget import verify_classification_50pct
+        ft = load_scores(ft_path, [r["sample_id"] for r in val],
+                         field="p_nothinking_pred", direction="higher_nt")
+        verify_classification_50pct(dense_curve(val, ft))
+        legacy["full_ft_classification"] = np.array([ft[r["sample_id"]] for r in val])
+    else:
+        print("BCHF_FT_SKIPPED: dense Full FT Classification predictions unavailable")
     return val, q, c, cv, legacy, {"classification_logit": qstats, "cost_delta_thousand": cstats,
                            "train_sha256": base.TRAIN_SHA256, "val_sha256": base.VAL_SHA256,
                            "p1_half": old_half, "p2_prediction_sha256": base.sha256(COST_PRED)}
@@ -371,7 +380,8 @@ def render_plots(folder, sweep, cv, budgets, alphas):
     plt.close(fig)
 
 
-def save_report(folder, sweep, records, cv, metadata, config, budgets, alphas, make_plots=True):
+def save_report(folder, sweep, records, cv, metadata, config, budgets, alphas,
+                frozen_policy, make_plots=True):
     folder.mkdir(parents=True, exist_ok=True)
     (folder/"report.json").write_text(json.dumps({
         "status":"exploratory validation only; canonical test never loaded",
@@ -383,6 +393,8 @@ def save_report(folder, sweep, records, cv, metadata, config, budgets, alphas, m
           "Conditional bootstrap ignores α selection / retraining and multiple testing",
           "No router prefill/inference overhead in generated-token costs"]
         },ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+    (folder/"frozen_policy.json").write_text(json.dumps(frozen_policy,
+        ensure_ascii=False, indent=2)+"\n",encoding="utf-8")
     with (folder/"fixed_alpha_sweep.csv").open("w",newline="",encoding="utf-8") as h:
         w=csv.writer(h);w.writerow(["budget","alpha","accuracy_pct","tokens","nt_fraction"])
         for r in sweep:w.writerow([r["budget"],r["alpha"],100*r["accuracy"],r["actual_tokens"],r["nt_fraction"]])
@@ -450,7 +462,19 @@ def main():
             "cost_head":"P2 Ridge predicted (Thinking−NoThinking) generated tokens / 1000",
             "score":"alpha(B)*zscore_train(logit_NT)+(1-alpha(B))*zscore_train(delta_t/1000)",
             "prediction_budget_mode":"uncalibrated original cost heads; diagnostic only"}
-    save_report(args.out,sweep,records,cv,meta,config,BUDGETS,ALPHAS,
+    chosen = choose_weights(val,q,c,BUDGETS,ALPHAS,args.penalty)
+    frozen = {"status":"development-selected; no held-out test validation yet",
+              "train_sha256":base.TRAIN_SHA256,"development_sha256":base.VAL_SHA256,
+              "normalization_train_only":{
+                  "classification_logit_mean_std":meta["classification_logit"],
+                  "cost_delta_1000_mean_std":meta["cost_delta_thousand"]},
+              "fixed_alpha":chosen["best_fixed"],
+              "piecewise_alpha":chosen["piecewise"],
+              "hard_switch_alpha":chosen["hard_switch"],
+              "budgets":BUDGETS,"penalty":args.penalty,
+              "score_orientation":"larger -> NoThinking first",
+              "restriction":"No test labels used; separate calibration and inference needed"}
+    save_report(args.out,sweep,records,cv,meta,config,BUDGETS,ALPHAS,frozen,
                 make_plots=not args.no_plot)
     for r in cv:
         print(f"BCHF_BUDGET {r['budget']} fixed={100*r['methods']['fixed']['observed']['accuracy']:.2f}% "
