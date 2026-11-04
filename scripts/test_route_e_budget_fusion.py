@@ -59,7 +59,7 @@ class BudgetFusionTests(unittest.TestCase):
         # full validation population; no extrapolation or held-out peeking.
         selection = f.choose_weights(
             self.rows[:18], self.q[:18], self.c[:18],
-            (900, 1200, 2400, 3000), f.ALPHAS, .0025)
+            (900, 1200, 1500, 3000), f.ALPHAS, .0025)
         self.assertIn(900, selection["available_budgets"])
         self.assertIn(3000, selection["unreachable_budgets"])
         self.assertEqual(selection["piecewise"]["high"],
@@ -67,7 +67,7 @@ class BudgetFusionTests(unittest.TestCase):
         # Selection does not use the held-out examples.
         self.assertEqual(selection, f.choose_weights(
             self.rows[:18], self.q[:18], self.c[:18],
-            (900, 1200, 2400, 3000), f.ALPHAS, .0025))
+            (900, 1200, 1500, 3000), f.ALPHAS, .0025))
 
     def test_development_all_budgets_unreachable_fails_clearly(self):
         with self.assertRaisesRegex(ValueError, "No jointly reachable"):
