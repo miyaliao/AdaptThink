@@ -1,7 +1,7 @@
 # Route A — External Router via ModernBERT
 
 <p align="center">
-  <img src="../assets/adaptthink_architecture.svg" width="100%" alt="External router architecture: mathematical question representation via ModernBERT or DeepSeek hidden states, routing score, and Thinking/NoThinking decision" />
+  <img src="../assets/adaptthink_architecture.png" width="100%" alt="External router architecture: mathematical question representation via ModernBERT or DeepSeek hidden states, routing score, and Thinking/NoThinking decision" />
 </p>
 
 
