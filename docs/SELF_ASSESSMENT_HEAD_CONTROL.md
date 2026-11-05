@@ -1,6 +1,6 @@
 # Same-Prompt, Same-Hidden-State Head Control
 
-**Status: code committed; TC1 smoke is still pending.**
+**Status: completed on TC1, 2026-11-05; exploratory negative result for the supervised same-state linear head.**
 
 ## Question and controlled setup
 
@@ -90,3 +90,32 @@ Prefill overhead is recorded separately in metadata. The equal-budget comparison
 ## Existing zero-shot baseline
 
 For 450 validation questions: Original LM Head AUC=0.5300, classification accuracy=16.89%, predicted NoThinking fraction=0.2%; swapped ordering AUC=0.4906, predicted NoThinking fraction=5.1%. The P1 Logistic different-prompt reference scored AUC=0.6110. The original LM score sometimes ranked problems effectively for a budget-routing replay, despite its poor direct classification; it is not evidence that it autonomously chose the budget correctly.
+
+
+## Completed results — 2026-11-05 (exploratory; 450 validation)
+
+**Run completed:** full train features (3000, 1536), validation features (450, 1536), CPU linear fit and replay. Train extraction printed \`max_reconstruction_error=0.000000\`, validating the final hidden representation -> original A/B logit reconstruction. Original zero-shot score in the new run differs slightly from the previous run (AUC 0.5312 vs 0.5300); keep the new readout-comparison values below and the original baseline record separately.
+
+| Method | ROC AUC | Class acc | Balanced acc | Predicted NoThinking |
+|---|---:|---:|---:|---:|
+| Original LM Head, **matched self-prompt** | 0.5312 | 16.89% | 50.13% | 0.2% |
+| Same-State Logistic, **matched self-prompt** | 0.5008 | 52.67% | 50.27% | 53.8% |
+| P1 Logistic, **different-prompt reference** | 0.6110 | 54.67% | 59.47% | 49.1% |
+
+### Accuracy at matched mean *generated*-token budgets (%)
+
+| Budget | Global Random | Original LM | Same-State Linear | P1 reference |
+|---:|---:|---:|---:|---:|
+| 900 | 69.94 | 70.67 | 70.86 | 70.67 |
+| 1100 | 71.24 | 73.11 | 70.57 | 74.22 |
+| 1300 | 72.54 | 76.20 | 72.44 | 75.33 |
+| 1500 | 73.84 | 75.75 | 72.89 | 76.44 |
+| 1700 | 75.14 | 77.15 | 73.78 | 76.89 |
+| 1900 | 76.44 | 78.22 | 76.16 | 76.67 |
+| 2100 | 77.74 | 78.55 | 77.38 | 77.78 |
+
+**Conclusion for this controlled configuration:** A single supervised 1536-d linear probe on the exact same self-assessment last-token state did **not** improve generalizable routing-label discrimination (AUC 0.5008 vs original LM A/B score 0.5312); its cost-matched routing curve was also weaker at most budgets and below global random at six of seven specified budgets. This **does not establish absence of relevant information** in other layers/representations or with another target/learner. The P1 gain cannot be assigned to the prompt alone because it is an unmatched-system comparison. Do not interpret letter-logit sigmoid as calibrated probabilities of mathematical success.
+
+Important: classification accuracy is heavily affected by the label imbalance (ties count NoThinking) and each head's default threshold, so compare AUC and balanced accuracy as well. These exploratory rankings use an already re-used validation split and exclude all extra self-assessment prefill tokens and latency.
+
+**Record location on TC1:** \`results/route_e/self_assessment/head_control/full/report.json\`. No more GPU jobs are needed for the current head-control experiment.
