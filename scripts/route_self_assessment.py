@@ -312,6 +312,16 @@ def extract(args):
             "forward_total_seconds": sum(timings)/1000,
             "variant_wall_seconds": time.perf_counter()-start,
         }
+        masses = [record[r["sample_id"]][variant]["full_vocab_mass_AB"]
+                  for r in rows]
+        margins = [record[r["sample_id"]][variant]["nt_minus_t_logit"]
+                   for r in rows]
+        print(f"SELF_SCORE_DIAG variant={variant} split={effective_split} "
+              f"mean_full_vocab_AB_mass={sum(masses)/len(masses):.6f} "
+              f"frac_mass_below_1pct={sum(v<.01 for v in masses)/len(masses):.3f} "
+              f"frac_prefers_NoThinking={sum(s>=0 for s in margins)/len(margins):.3f} "
+              f"margin_min={min(margins):.3f} margin_max={max(margins):.3f}",
+              flush=True)
 
     # Original and swapped are paired by sample ID; no oracle label is used.
     for r in rows:
