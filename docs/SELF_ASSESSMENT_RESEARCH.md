@@ -1,6 +1,6 @@
 # LRM Zero-shot Self-Assessment vs Supervised P1 Router
 
-**Status: first implementation, CPU tokenizer audit required; no GPU results yet.**
+**Status: original 450-validation zero-shot assessment completed (2026-11-05); same-state head control is the next experiment.**
 **Research question:** For the *same frozen* DeepSeek-R1-Distill-Qwen-1.5B, can a training-free language-model readout rank which math problems should use NoThinking as well as the previously supervised P1 hidden-state Logistic Regression router?
 
 ## 1. First-phase scope
@@ -87,3 +87,16 @@ The budget replay uses the existing 450 strict outcomes, all 451 top-k policies 
 All validation results are **exploratory** because the original 450-question split has been used repeatedly to develop previous routing methods. Do not tune the self-assessment wording or switch between original/swapped based on its final Accuracy–Token curve. Keep any future calibration or task-prompt search within training-only data, and use a separate untouched test set for confirmatory results.
 
 **Next, only after this baseline is valid:** add distinct success-rate prediction and token-length prediction tasks. They require new target wording, separate checks for numerical probability interpretation, and matched success/cost regression head baselines—not merely reinterpreting the mode-choice logits.
+
+
+## 5. Recorded zero-shot result (450-val; exploratory)
+
+The original A/B-mode zero-shot LM Head returned:
+- Self original: AUC 0.5300; classification accuracy 16.89%; balanced accuracy 50.13%; NoThinking predictions 0.2%.
+- Self swapped (diagnostic): AUC 0.4906; accuracy 20.89%; balanced accuracy 51.47%; NoThinking predictions 5.1%.
+- Self average (diagnostic only): AUC 0.5525; accuracy 16.67%; NoThinking predictions 0%.
+- P1 Logistic (different-prompt reference): AUC 0.6110; accuracy 54.67%; balanced accuracy 59.47%; NoThinking predictions 49.1%.
+
+In the fixed-budget offline replay, Self original ranked questions competitively at some budgets despite weak direct classification; this is not autonomous reasoning-budget allocation. The option-order sensitivity and exclusion of extra self-assessment prefill costs prevent strong end-to-end claims.
+
+**Next:** Same-state LM Head vs supervised linear readout, strictly matching the original self-assessment prompt and final hidden state. See [SELF_ASSESSMENT_HEAD_CONTROL.md](SELF_ASSESSMENT_HEAD_CONTROL.md). Do not choose the swapped condition or tune wording on these validation results.
