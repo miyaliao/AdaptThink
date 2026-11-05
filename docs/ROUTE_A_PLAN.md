@@ -50,6 +50,36 @@ Dual MSE and Margin were trained with the original strict 3,000-question file, n
 
 Delta run configuration: LR `2e-5`, batch `16`, max `5` epochs, seed `42`, FP16; best checkpoint `checkpoint-188`. Earlier Classification/Dual run settings should be checked against their server-side run metadata rather than assumed identical.
 
+### Utility-aware supervision ablation (2026-11-05)
+
+Four **training targets** were compared on the same strict 3,000-train / 450-validation protocol. All predict the preference for NoThinking: **Classification** uses `1[p_N >= p_T]`; **Utility-Hard** uses `1[ΔU_N >= 0]`; **Soft-NoCost** uses `sigmoid((p_N-p_T)/τ)`; **Utility-Soft** uses `sigmoid(ΔU_N/τ)`, where `ΔU_N = (p_N-p_T) + λ(t_T-t_N)/1000`, **λ = 0.02**, **τ = 0.25**. Here `p` denotes strict empirical success rate and `t` mean generated tokens.
+
+**ModernBERT (full fine-tuning; Classification is the control from this utility-ablation run, not the original five-method checkpoint):**
+
+| Output-token budget | Classification | Utility-Hard | Soft-NoCost | Utility-Soft |
+| ---: | ---: | ---: | ---: | ---: |
+| 900 | 70.00% | 70.44% | **72.22%** | 70.22% |
+| 1,100 | 70.89% | **72.22%** | **72.22%** | 71.56% |
+| 1,300 | 72.01% | 73.33% | **74.00%** | 72.44% |
+| 1,500 | 72.96% | **74.44%** | 73.77% | 74.00% |
+| 1,700 | 74.44% | **74.89%** | 74.67% | 74.12% |
+| 1,900 | 76.00% | **77.78%** | 76.00% | 75.42% |
+| 2,100 | 77.58% | **78.22%** | 77.46% | 75.56% |
+
+**DeepSeek P1 (frozen final-layer 1,536-d assistant-prefix representation; Logistic head, BCE + L2):**
+
+| Output-token budget | Classification | Utility-Hard | Soft-NoCost | Utility-Soft |
+| ---: | ---: | ---: | ---: | ---: |
+| 900 | 70.67% | **73.56%** | 69.56% | 69.56% |
+| 1,100 | **74.22%** | 72.89% | 71.56% | 73.33% |
+| 1,300 | **75.33%** | 74.74% | 73.11% | 74.89% |
+| 1,500 | **76.44%** | 75.88% | 75.78% | 76.00% |
+| 1,700 | 76.89% | 76.74% | **77.27%** | 77.20% |
+| 1,900 | 76.67% | 77.78% | 77.69% | **77.92%** |
+| 2,100 | 77.78% | 77.56% | **78.22%** | 78.00% |
+
+The historical P1 Classification probe was reused and verified (**76.4444% at 50% NoThinking, 1,427.05 tokens; max prediction-score difference `1.5e-6`**). **Finding:** ModernBERT Utility-Hard exceeded its own Classification control at all seven budgets, but P1 showed **no consistent utility gain**: Utility-Hard gained **+2.89 pp at 900**, while the original P1 Classification led at **1,100–1,500**. These are exploratory **cost-matched validation accuracies** from offline replay/interpolation, not held-out test or significance results; router/encoder compute is excluded. ModernBERT full fine-tuning versus frozen P1 also prevents attributing cross-encoder differences solely to the representation.
+
 ### Main comparison: routing 50% of validation questions to NoThinking
 
 | Router | Accuracy | Mean output tokens | Uplift vs cost-matched Random |
