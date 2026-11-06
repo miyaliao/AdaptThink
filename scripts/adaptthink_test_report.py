@@ -241,6 +241,7 @@ def write_csv(path, rows, fieldnames):
 
 
 def report(args):
+    # ThinkSwitcher convention: Random (x/y) = x% Thinking and y% NoThinking.
     out=args.out;out.mkdir(parents=True,exist_ok=True)
     val=read_rows(args.val_labels);test=read_rows(args.test_labels)
     val_ids={r["sample_id"] for r in val};test_ids={r["sample_id"] for r in test}
@@ -296,7 +297,7 @@ def report(args):
         row["Pooled Tok."]=per_group["overall"]["tok"]
         table.append(row)
     for label,q in (("Always NoThinking (SC-only)",1.),("Always Thinking (LC-only)",0.),
-                    ("Random (50/50; expectation)",.5),("Random (25/75; expectation)",.25),("Random (10/90; expectation)",.1)):
+                    ("Random (50/50; expectation)",.5),("Random (25/75; expectation)",.75),("Random (10/90; expectation)",.90)):
         table_row(label,{ds:means(rows,dict.fromkeys((r["sample_id"] for r in rows),q)) for ds,rows in scopes.items()})
     transfers=[]
     for name,_,_ in METHODS:
