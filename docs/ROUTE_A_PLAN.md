@@ -80,6 +80,12 @@ Four **training targets** were compared on the same strict 3,000-train / 450-val
 
 The historical P1 Classification probe was reused and verified (**76.4444% at 50% NoThinking, 1,427.05 tokens; max prediction-score difference `1.5e-6`**). **Finding:** ModernBERT Utility-Hard exceeded its own Classification control at all seven budgets, but P1 showed **no consistent utility gain**: Utility-Hard gained **+2.89 pp at 900**, while the original P1 Classification led at **1,100–1,500**. These are exploratory **cost-matched validation accuracies** from offline replay/interpolation, not held-out test or significance results; router/encoder compute is excluded. ModernBERT full fine-tuning versus frozen P1 also prevents attributing cross-encoder differences solely to the representation.
 
+### P1 Utility lambda sensitivity (protocol; not yet run, 2026-11-06)
+
+[CPU-only sweep script](../scripts/p1_utility_lambda_sweep.py) reuses the **original strict 3,000/450 labels** and **cached frozen DeepSeek P1 features**. It evaluates Utility-Hard and Utility-Soft at predeclared `λ ∈ {0, 0.005, 0.01, 0.02, 0.05, 0.10}`, fixing `τ = 0.25`, Logistic `L2 = 1e-3`, and LBFGS `max_iter = 200`. For Utility-Hard at `λ=0`, it reuses the verified historical P1 Classification scores; it also keeps the prior P1 Cost-only reference.
+
+Run from the repository root: `python scripts/p1_utility_lambda_sweep.py self-test`, then `python scripts/p1_utility_lambda_sweep.py run`. Outputs are **server-local** under `results/route_e/p1_utility_lambda_sweep/`: per-λ predictions/heads, **451-policy** `all_451_threshold_policies.csv`, `nauc_ac_lambda_sweep.csv`, `fixed_budget_accuracy.csv`, and figures. The primary metric is **nAUC-AC over the full shared output-token interval**, using the same cost-sorted integration convention as `scripts/compute_nauc_ac.py`; the seven fixed budgets are supplementary. The best λ selected on these 450 validation rows is *exploratory only* and must be frozen before independent test evaluation. No results are claimed here before TC1 execution.
+
 ### Main comparison: routing 50% of validation questions to NoThinking
 
 | Router | Accuracy | Mean output tokens | Uplift vs cost-matched Random |
