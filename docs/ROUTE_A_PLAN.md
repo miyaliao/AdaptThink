@@ -80,11 +80,22 @@ Four **training targets** were compared on the same strict 3,000-train / 450-val
 
 The historical P1 Classification probe was reused and verified (**76.4444% at 50% NoThinking, 1,427.05 tokens; max prediction-score difference `1.5e-6`**). **Finding:** ModernBERT Utility-Hard exceeded its own Classification control at all seven budgets, but P1 showed **no consistent utility gain**: Utility-Hard gained **+2.89 pp at 900**, while the original P1 Classification led at **1,100–1,500**. These are exploratory **cost-matched validation accuracies** from offline replay/interpolation, not held-out test or significance results; router/encoder compute is excluded. ModernBERT full fine-tuning versus frozen P1 also prevents attributing cross-encoder differences solely to the representation.
 
-### P1 Utility lambda sensitivity (protocol; not yet run, 2026-11-06)
+### Utility lambda sensitivity (2026-11-08)
 
-[CPU-only sweep script](../scripts/p1_utility_lambda_sweep.py) reuses the **original strict 3,000/450 labels** and **cached frozen DeepSeek P1 features**. It evaluates Utility-Hard and Utility-Soft at predeclared `λ ∈ {0, 0.005, 0.01, 0.02, 0.05, 0.10}`, fixing `τ = 0.25`, Logistic `L2 = 1e-3`, and LBFGS `max_iter = 200`. For Utility-Hard at `λ=0`, it reuses the verified historical P1 Classification scores; it also keeps the prior P1 Cost-only reference.
+**Frozen DeepSeek P1 — completed on strict validation (450 questions).** [CPU sweep](../scripts/p1_utility_lambda_sweep.py) reused the frozen P1 features and Logistic head, with `λ ∈ {0, .005, .01, .02, .05, .10}`, `τ=.25`. Primary metric: 451-threshold-policy, cost-sorted nAUC-AC (same convention as [compute_nauc_ac.py](../scripts/compute_nauc_ac.py)).
 
-Run from the repository root: `python scripts/p1_utility_lambda_sweep.py self-test`, then `python scripts/p1_utility_lambda_sweep.py run`. Outputs are **server-local** under `results/route_e/p1_utility_lambda_sweep/`: per-λ predictions/heads, **451-policy** `all_451_threshold_policies.csv`, `nauc_ac_lambda_sweep.csv`, `fixed_budget_accuracy.csv`, and figures. The primary metric is **nAUC-AC over the full shared output-token interval**, using the same cost-sorted integration convention as `scripts/compute_nauc_ac.py`; the seven fixed budgets are supplementary. The best λ selected on these 450 validation rows is *exploratory only* and must be frozen before independent test evaluation. No results are claimed here before TC1 execution.
+| P1 method | Best validation λ | nAUC-AC | Relative to P1 Classification |
+| --- | ---: | ---: | ---: |
+| Classification (reference) | 0 | +23.4831 | — |
+| Utility-Hard | **0.02** | **+29.7983** | +6.3152 |
+| Utility-Soft | **0.10** | **+36.3521** | +12.8690 |
+| Cost-only (reference) | — | **+38.3885** | +14.9054 |
+
+Hard-label results were non-monotonic across λ (e.g. λ=.05: +3.2595); Soft λ=.10 approached but did **not** exceed Cost-only. These λ choices reuse the same validation set extensively and are **exploratory**, not held-out improvements. Server-only outputs: `results/route_e/p1_utility_lambda_sweep/`.
+
+**Full-FT ModernBERT — corresponding experiment prepared, not run yet.** The first-round Utility-Hard (`λ=.02`) exceeded its own Classification control at all seven evaluated token budgets; its earlier threshold-curve nAUC-AC was **+9.2095** (versus Random), motivating an analogous λ sensitivity test. The [sweep driver](../scripts/modernbert_utility_lambda_sweep.py) invokes the **original server-local** `scripts/train_modernbert_utility.py` with unchanged ModernBERT training settings (5 epochs, LR 2e-5, batch 16, 512 tokens, seed 42, FP16), one GPU sequentially via [Slurm script](../scripts/ntu_modernbert_utility_lambda_sweep.sbatch). It reuses prior Classification / Soft-NoCost / λ=.02 scores when metadata match; at λ=0, Hard and Soft reuse their identical target controls. Six predeclared λ values per utility objective are evaluated with 451-policy nAUC-AC (primary), seven matched budgets (secondary), and a historical +9.2095 reproduction gate. Run `python scripts/modernbert_utility_lambda_sweep.py plan`, then submit `sbatch scripts/ntu_modernbert_utility_lambda_sweep.sbatch`. Output: `results/route_e/modernbert_utility_lambda_sweep/`.
+
+All these metrics are validation-only, output-token costs exclude encoder/router overhead, and λ must be frozen before independent held-out test evaluation.
 
 ### Main comparison: routing 50% of validation questions to NoThinking
 
