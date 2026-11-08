@@ -1,0 +1,15 @@
+method,objective,lambda,AUC_AC,nAUC_AC,delta_vs_classification_nAUC_AC,mean_gain_pp,cost_backtracks,score_source
+classification,classification,0.0,1193.1128518518522,-6.9231777777768,0.0,-0.4217883523957468,12,outputs/external_modernbert/utility_ablation/classification
+soft_nocost,soft_nocost,0.0,1210.9241530864188,10.888123456789799,17.8113012345666,0.6633490863491317,12,outputs/external_modernbert/utility_ablation/soft_nocost_tau0.25
+utility_hard lambda=0,utility_hard,0.0,1193.1128518518522,-6.9231777777768,0.0,-0.4217883523957468,12,outputs/external_modernbert/utility_ablation/classification
+utility_hard lambda=0.005,utility_hard,0.005,1209.086081481481,9.050051851852004,15.973229629628804,0.5513662341507184,12,outputs/external_modernbert/utility_ablation/utility_hard_lam0.005
+utility_hard lambda=0.01,utility_hard,0.01,1218.8939111111094,18.85788148148049,25.78105925925729,1.1488993949108373,12,outputs/external_modernbert/utility_ablation/utility_hard_lam0.01
+utility_hard lambda=0.02,utility_hard,0.02,1209.2455777777766,9.209548148147633,16.132725925924433,0.561083401929322,12,outputs/external_modernbert/utility_ablation/utility_hard_lam0.02
+utility_hard lambda=0.05,utility_hard,0.05,1196.2466469135782,-3.7893827160507954,3.133795061726005,-0.23086471902116074,12,outputs/external_modernbert/utility_ablation/utility_hard_lam0.05
+utility_hard lambda=0.1,utility_hard,0.1,1196.0162716049372,-4.019758024691782,2.903419753085018,-0.24490012660180313,12,outputs/external_modernbert/utility_ablation/utility_hard_lam0.1
+utility_soft lambda=0,utility_soft,0.0,1210.9241530864188,10.888123456789799,17.8113012345666,0.6633490863491317,12,outputs/external_modernbert/utility_ablation/soft_nocost_tau0.25
+utility_soft lambda=0.005,utility_soft,0.005,1208.1420888888886,8.10605925925961,15.02923703703641,0.49385433815673807,12,outputs/external_modernbert/utility_ablation/utility_soft_lam0.005_tau0.25
+utility_soft lambda=0.01,utility_soft,0.01,1198.140814814814,-1.8952148148150627,5.0279629629617375,-0.11546425064265152,12,outputs/external_modernbert/utility_ablation/utility_soft_lam0.01_tau0.25
+utility_soft lambda=0.02,utility_soft,0.02,1197.9635037037035,-2.072525925925447,4.850651851851353,-0.1262667699216992,12,outputs/external_modernbert/utility_ablation/utility_soft_lam0.02_tau0.25
+utility_soft lambda=0.05,utility_soft,0.05,1198.1151283950614,-1.9209012345675092,5.002276543209291,-0.11702917256349364,12,outputs/external_modernbert/utility_ablation/utility_soft_lam0.05_tau0.25
+utility_soft lambda=0.1,utility_soft,0.1,1222.0391901234557,22.003160493826726,28.926338271603527,1.3405226776034938,12,outputs/external_modernbert/utility_ablation/utility_soft_lam0.1_tau0.25
