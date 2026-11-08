@@ -118,13 +118,14 @@ Run from the repository root:
 python scripts/utility_original_ablation.py self-test
 python scripts/utility_original_ablation.py train --encoder p1
 python scripts/utility_original_ablation.py evaluate --encoder p1
+python scripts/compare_utility_objectives.py --encoder p1
 # ModernBERT: submit the one-GPU job on TC1
 sbatch --export=ALL,ORIGINAL_SMOKE=1 scripts/ntu_utility_original.sbatch
 # after smoke passes (not concurrently):
 sbatch scripts/ntu_utility_original.sbatch
 ```
 
-New outputs remain separate under `outputs/route_e/p1_utility_original/`, `outputs/external_modernbert/utility_original/` and `results/route_a/utility_original/{p1,modernbert}/`. Each run saves 450-question predictions, model/head artifacts, all 451 threshold policies, cost-sorted nAUC-AC, seven supplementary matched budgets, and a validation-selected λ. No test labels or DeepSeek generations are used. **No Utility-Original accuracy or nAUC result is claimed before execution.** The previously frozen Hard/Soft λ selections remain unchanged; this addition completes the *objective-family* ablation, not a new search over their λ values.
+New outputs remain separate under `outputs/route_e/p1_utility_original/`, `outputs/external_modernbert/utility_original/` and `results/route_a/utility_original/{p1,modernbert}/`. Each run saves 450-question predictions, model/head artifacts, all 451 threshold policies, cost-sorted nAUC-AC, seven supplementary matched budgets, and a validation-selected λ. The [comparison script](../scripts/compare_utility_objectives.py) merges the new Original results with previously archived Hard/Soft sweeps to produce `three_utility_objectives_nauc.csv` and a same-λ figure. No test labels or DeepSeek generations are used. **No Utility-Original accuracy or nAUC result is claimed before execution.** The previously frozen Hard/Soft λ selections remain unchanged; this addition completes the *objective-family* ablation, not a new search over their λ values.
 
 ### Main comparison: routing 50% of validation questions to NoThinking
 
