@@ -101,6 +101,31 @@ At `λ=0`, Utility-Hard shares the Classification hard target, and Utility-Soft 
 
 **Research decision:** stop further λ search on this reused validation split. Keep the four choices above as preselected development configurations; freeze each model, λ and routing score definition before a single independent test comparison. Measured-cost interpolation is descriptive; router/encoder overhead and statistical significance remain unassessed.
 
+### Utility-Original — continuous Utility regression (implementation added; results pending)
+
+The initial four-arm study compared hard and soft **classification supervision**, but omitted direct regression of the **raw utility gap**. The missing third objective is now implemented as a separate ablation (without changing or unlocking the frozen Hard/Soft validation results):
+
+| Training objective | Target from *training* outcomes | Head / loss |
+| --- | --- | --- |
+| Utility-Original (new) | `ΔU_N=(p_N-p_T)+λ(t_T-t_N)/1000` (unbounded signed continuous value) | **1-output regression / MSE** |
+| Utility-Hard (completed) | `1[ΔU_N>=0]` | Classification / CE |
+| Utility-Soft (completed) | `sigmoid(ΔU_N/τ)` | Soft-label CE |
+
+The [Utility-Original runner](../scripts/utility_original_ablation.py) uses the **same predefined `λ={0,.005,.01,.02,.05,.10}`** and strict 3,000/450 split as the two previous objectives. **ModernBERT Full FT** uses a one-logit regression head (5 epochs, LR 2e-5, batch 16, 512 tokens, FP16, seed 42, best validation MSE checkpoint), trained serially on a single GPU with [this Slurm script](../scripts/ntu_utility_original.sbatch). **Frozen P1** reuses cached 1536-d Hidden States, fitting a linear Ridge head by CPU LBFGS (MSE + `1e-3‧||w||²`, standardized using train only). These are *within-encoder supervision* comparisons; encoder and head optimizers differ across the two encoders. Unlike Classification/Hard/Soft, **λ=0 is still trained as a continuous regression**, not reused from the classification checkpoint.
+
+Run from the repository root:
+```bash
+python scripts/utility_original_ablation.py self-test
+python scripts/utility_original_ablation.py train --encoder p1
+python scripts/utility_original_ablation.py evaluate --encoder p1
+# ModernBERT: submit the one-GPU job on TC1
+sbatch --export=ALL,ORIGINAL_SMOKE=1 scripts/ntu_utility_original.sbatch
+# after smoke passes (not concurrently):
+sbatch scripts/ntu_utility_original.sbatch
+```
+
+New outputs remain separate under `outputs/route_e/p1_utility_original/`, `outputs/external_modernbert/utility_original/` and `results/route_a/utility_original/{p1,modernbert}/`. Each run saves 450-question predictions, model/head artifacts, all 451 threshold policies, cost-sorted nAUC-AC, seven supplementary matched budgets, and a validation-selected λ. No test labels or DeepSeek generations are used. **No Utility-Original accuracy or nAUC result is claimed before execution.** The previously frozen Hard/Soft λ selections remain unchanged; this addition completes the *objective-family* ablation, not a new search over their λ values.
+
 ### Main comparison: routing 50% of validation questions to NoThinking
 
 | Router | Accuracy | Mean output tokens | Uplift vs cost-matched Random |
