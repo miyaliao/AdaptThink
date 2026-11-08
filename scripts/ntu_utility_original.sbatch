@@ -31,4 +31,5 @@ fi
 python -u scripts/utility_original_ablation.py plan --encoder modernbert
 python -u scripts/utility_original_ablation.py train --encoder modernbert
 python -u scripts/utility_original_ablation.py evaluate --encoder modernbert
+python -u scripts/compare_utility_objectives.py --encoder modernbert
 echo UTILITY_ORIGINAL_MODERNBERT_DONE
