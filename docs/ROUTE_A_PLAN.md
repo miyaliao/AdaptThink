@@ -80,22 +80,26 @@ Four **training targets** were compared on the same strict 3,000-train / 450-val
 
 The historical P1 Classification probe was reused and verified (**76.4444% at 50% NoThinking, 1,427.05 tokens; max prediction-score difference `1.5e-6`**). **Finding:** ModernBERT Utility-Hard exceeded its own Classification control at all seven budgets, but P1 showed **no consistent utility gain**: Utility-Hard gained **+2.89 pp at 900**, while the original P1 Classification led at **1,100–1,500**. These are exploratory **cost-matched validation accuracies** from offline replay/interpolation, not held-out test or significance results; router/encoder compute is excluded. ModernBERT full fine-tuning versus frozen P1 also prevents attributing cross-encoder differences solely to the representation.
 
-### Utility lambda sensitivity (2026-11-08)
+### Utility λ sensitivity — frozen development results (2026-11-08)
 
-**Frozen DeepSeek P1 — completed on strict validation (450 questions).** [CPU sweep](../scripts/p1_utility_lambda_sweep.py) reused the frozen P1 features and Logistic head, with `λ ∈ {0, .005, .01, .02, .05, .10}`, `τ=.25`. Primary metric: 451-threshold-policy, cost-sorted nAUC-AC (same convention as [compute_nauc_ac.py](../scripts/compute_nauc_ac.py)).
+**Status: CLOSED for validation-based λ selection.** Fixed `λ ∈ {0, .005, .01, .02, .05, .10}` and `τ=.25` on the **original strict 3,000-train / 450-validation** split. These figures are from TC1 operator logs, not an independent test. Primary metric: **nAUC-AC** from **451 actual threshold policies**, integrating after sorting observed mean generated-token costs and subtracting the shared Random-Baseline area (**1200.03603**); 12 local cost backtracks occur for every method. Higher is better.
 
-| P1 method | Best validation λ | nAUC-AC | Relative to P1 Classification |
-| --- | ---: | ---: | ---: |
-| Classification (reference) | 0 | +23.4831 | — |
-| Utility-Hard | **0.02** | **+29.7983** | +6.3152 |
-| Utility-Soft | **0.10** | **+36.3521** | +12.8690 |
-| Cost-only (reference) | — | **+38.3885** | +14.9054 |
+| λ | Full-FT ModernBERT Hard | Full-FT ModernBERT Soft | Frozen P1 Hard | Frozen P1 Soft |
+| ---: | ---: | ---: | ---: | ---: |
+| 0 | -6.9232 | +10.8881 | +23.4831 | +12.5783 |
+| 0.005 | +9.0501 | +8.1061 | +18.4131 | +15.7371 |
+| 0.01 | **+18.8579** | -1.8952 | +27.0395 | +17.6368 |
+| 0.02 | +9.2095 | -2.0725 | **+29.7983** | +22.1108 |
+| 0.05 | -3.7894 | -1.9209 | +3.2595 | +31.1228 |
+| 0.10 | -4.0198 | **+22.0032** | +26.4246 | **+36.3521** |
 
-Hard-label results were non-monotonic across λ (e.g. λ=.05: +3.2595); Soft λ=.10 approached but did **not** exceed Cost-only. These λ choices reuse the same validation set extensively and are **exploratory**, not held-out improvements. Server-only outputs: `results/route_e/p1_utility_lambda_sweep/`.
+**Frozen validation-selected candidates** (one maximum-nAUC λ per encoder/objective): ModernBERT Utility-Hard **λ=.01 (+18.8579)**; ModernBERT Utility-Soft **λ=.10 (+22.0032)**; P1 Utility-Hard **λ=.02 (+29.7983)**; P1 Utility-Soft **λ=.10 (+36.3521)**. Control nAUC values: ModernBERT Classification **-6.9232** (from this utility run, *not* historical Route A best checkpoint), frozen P1 Classification **+23.4831**, P1 Cost-only **+38.3885**. Thus **P1 Cost-only remains ahead** of the best Utility candidate on this validation nAUC measure.
 
-**Full-FT ModernBERT — corresponding experiment prepared, not run yet.** The first-round Utility-Hard (`λ=.02`) exceeded its own Classification control at all seven evaluated token budgets; its earlier threshold-curve nAUC-AC was **+9.2095** (versus Random), motivating an analogous λ sensitivity test. The [sweep driver](../scripts/modernbert_utility_lambda_sweep.py) invokes the **original server-local** `scripts/train_modernbert_utility.py` with unchanged ModernBERT training settings (5 epochs, LR 2e-5, batch 16, 512 tokens, seed 42, FP16), one GPU sequentially via [Slurm script](../scripts/ntu_modernbert_utility_lambda_sweep.sbatch). It reuses prior Classification / Soft-NoCost / λ=.02 scores when metadata match; at λ=0, Hard and Soft reuse their identical target controls. Six predeclared λ values per utility objective are evaluated with 451-policy nAUC-AC (primary), seven matched budgets (secondary), and a historical +9.2095 reproduction gate. Run `python scripts/modernbert_utility_lambda_sweep.py plan`, then submit `sbatch scripts/ntu_modernbert_utility_lambda_sweep.sbatch`. Output: `results/route_e/modernbert_utility_lambda_sweep/`.
+At `λ=0`, Utility-Hard shares the Classification hard target, and Utility-Soft shares Soft-NoCost's soft target; these historical controls are reused. ModernBERT retrains the **entire encoder** for each non-reused λ, using the original server-local `scripts/train_modernbert_utility.py` (LR 2e-5, batch 16, max length 512, 5 epochs, FP16, seed 42). P1 keeps the encoder frozen and trains only the Logistic head. λ changes were **non-monotonic**; do not generalize the best validation choice to held-out performance.
 
-All these metrics are validation-only, output-token costs exclude encoder/router overhead, and λ must be frozen before independent held-out test evaluation.
+**Archived compact data:** [ModernBERT full sweep](../results/route_a/utility_objective/modernbert_lambda_val450.csv), [P1 full sweep](../results/route_a/utility_objective/deepseek_p1_lambda_val450.csv), [frozen selection/provenance](../results/route_a/utility_objective/frozen_validation_selection.json). **Scripts:** [ModernBERT sweep](../scripts/modernbert_utility_lambda_sweep.py), [P1 sweep](../scripts/p1_utility_lambda_sweep.py), [metric](../scripts/compute_nauc_ac.py). Full prediction files, checkpoints and plots remain **server-local** under `outputs/external_modernbert/utility_ablation/`, `results/route_e/modernbert_utility_lambda_sweep/`, and `results/route_e/p1_utility_lambda_sweep/`; checkpoint SHA256s were **not** verified or archived in Git. To make these choices operationally immutable, preserve the exact selected checkpoint IDs/files and hashes on TC1 before test evaluation.
+
+**Research decision:** stop further λ search on this reused validation split. Keep the four choices above as preselected development configurations; freeze each model, λ and routing score definition before a single independent test comparison. Measured-cost interpolation is descriptive; router/encoder overhead and statistical significance remain unassessed.
 
 ### Main comparison: routing 50% of validation questions to NoThinking
 
