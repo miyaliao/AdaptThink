@@ -1,0 +1,15 @@
+method,objective,lambda,AUC_AC,nAUC_AC,mean_gain_pp,cost_backtracks
+P1 Classification,classification,0,1223.5192,23.4831,1.431,12
+P1 Cost-only,cost_only,,1238.4246,38.3885,2.339,12
+P1 utility_hard lambda=0,utility_hard,0,1223.5192,23.4831,1.431,12
+P1 utility_hard lambda=0.005,utility_hard,0.005,1218.4492,18.4131,1.122,12
+P1 utility_hard lambda=0.01,utility_hard,0.01,1227.0756,27.0395,1.647,12
+P1 utility_hard lambda=0.02,utility_hard,0.02,1229.8344,29.7983,1.815,12
+P1 utility_hard lambda=0.05,utility_hard,0.05,1203.2956,3.2595,0.199,12
+P1 utility_hard lambda=0.1,utility_hard,0.1,1226.4606,26.4246,1.610,12
+P1 utility_soft lambda=0,utility_soft,0,1212.6143,12.5783,0.766,12
+P1 utility_soft lambda=0.005,utility_soft,0.005,1215.7732,15.7371,0.959,12
+P1 utility_soft lambda=0.01,utility_soft,0.01,1217.6729,17.6368,1.075,12
+P1 utility_soft lambda=0.02,utility_soft,0.02,1222.1468,22.1108,1.347,12
+P1 utility_soft lambda=0.05,utility_soft,0.05,1231.1588,31.1228,1.896,12
+P1 utility_soft lambda=0.1,utility_soft,0.1,1236.3881,36.3521,2.215,12
