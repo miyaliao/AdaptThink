@@ -1,0 +1,87 @@
+{
+  "title": "AdaptThink Route A — Utility Objective lambda ablation: frozen development selection",
+  "freeze_date": "2026-11-08",
+  "status": "development-validation selection frozen; independent held-out test NOT evaluated here",
+  "scope": "Freeze the current chosen lambda per encoder/objective; no further lambda tuning on this same validation set",
+  "data_protocol": {
+    "train_samples": 3000,
+    "validation_samples": 450,
+    "train_sha256": "761dcbb6338de1a3c71def382089c83e8024e0e55af6334dd974963e8d7e0f2c",
+    "validation_sha256": "4c1e984d3744cc089dcc963a30af0ef3d1ed9808c4bfd245a97e48787d501461",
+    "cost_interval": [
+      567.6066666666667,
+      2208.9933333333333
+    ],
+    "random_reference_auc_ac": 1200.03603,
+    "primary_metric": "nAUC-AC = AUC-AC - random baseline area; cost-sorted, clipped shared endpoints, trapezoidal integration over 451 top-k router policies",
+    "limitations": [
+      "exploratory repeated use of 450 validation examples",
+      "router/encoder compute cost excluded",
+      "12 local backward output-token steps",
+      "not a held-out claim"
+    ]
+  },
+  "parameters": {
+    "lambda_grid": [
+      0,
+      0.005,
+      0.01,
+      0.02,
+      0.05,
+      0.1
+    ],
+    "temperature": 0.25,
+    "objective_target": "deltaU_N = (p_N-p_T) + lambda*(t_T-t_N)/1000",
+    "lambda_selection": "maximum validation nAUC-AC within predeclared grid; ties choose smaller lambda"
+  },
+  "frozen_development_choices": {
+    "full_modernbert": {
+      "utility_hard": {
+        "lambda": 0.01,
+        "nAUC_AC": 18.85788148148049,
+        "score_dir": "outputs/external_modernbert/utility_ablation/utility_hard_lam0.01"
+      },
+      "utility_soft": {
+        "lambda": 0.1,
+        "nAUC_AC": 22.003160493826726,
+        "score_dir": "outputs/external_modernbert/utility_ablation/utility_soft_lam0.1_tau0.25"
+      },
+      "classification_control": {
+        "nAUC_AC": -6.9231777777768,
+        "score_dir": "outputs/external_modernbert/utility_ablation/classification"
+      },
+      "historical_utility_hard_lambda_0_02": {
+        "nAUC_AC": 9.209548148147633
+      },
+      "all_lambda_table": "results/route_a/utility_objective/modernbert_lambda_val450.csv",
+      "training_script": "scripts/train_modernbert_utility.py (server-local at freeze time)",
+      "sweep_script": "scripts/modernbert_utility_lambda_sweep.py"
+    },
+    "frozen_deepseek_p1": {
+      "utility_hard": {
+        "lambda": 0.02,
+        "nAUC_AC": 29.7983
+      },
+      "utility_soft": {
+        "lambda": 0.1,
+        "nAUC_AC": 36.3521
+      },
+      "classification_control": {
+        "nAUC_AC": 23.4831
+      },
+      "cost_only_external_reference": {
+        "nAUC_AC": 38.3885
+      },
+      "all_lambda_table": "results/route_a/utility_objective/deepseek_p1_lambda_val450.csv",
+      "score_dir": "results/route_e/p1_utility_lambda_sweep/predictions (server-local at freeze time)",
+      "sweep_script": "scripts/p1_utility_lambda_sweep.py"
+    }
+  },
+  "reproducibility": {
+    "compact_results_in_git": true,
+    "original_per_question_predictions_and_checkpoints_in_git": false,
+    "checkpoint_hashes_verified": false,
+    "source": "Operator-provided TC1 logs and CSV contents in conversation; compact records transcribed, no independent TC1 file fetch",
+    "follow_up": "Archive exact selected checkpoint IDs/hashes and prediction files from TC1 before running sealed test; do not select more lambda values on the same validation data"
+  }
+}
