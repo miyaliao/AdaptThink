@@ -408,3 +408,129 @@ def run(args):
         score=np.asarray([scores[r['sample_id']] for r in val],dtype=np.float64)
         prospective[name]=predicted_only_budget(val,{'t_t':a0_pred['t_t'],'t_n':a0_pred['t_n']},
                                                score,args.budgets)
+
+    if out.exists() and args.overwrite:
+        # Only overwrite defined Experiment F outputs; don't delete other files.
+        pass
+    out.mkdir(parents=True,exist_ok=True)
+    config={'experiment':'Route E / Experiment F: Cost Difference Supervision',
+            'base_encoder':'Frozen DeepSeek-R1-Distill-Qwen-1.5B P1 assistant-only, final norm, last valid prompt token',
+            'train_n':len(train),'val_n':len(val),'train_sha256':base.TRAIN_SHA256,
+            'val_sha256':base.VAL_SHA256,'train_feature_meta':tm,'val_feature_meta':vm,
+            'l2':args.l2,'delta_scale':args.delta_scale,'betas_cv':args.betas,
+            'selected_beta':selected,'cv_folds':args.cv_folds,'lbfgs_steps':args.lbfgs_steps,
+            'budgets':args.budgets,'bootstrap_reps':args.bootstrap_reps,'seed':args.seed,
+            'a0_reproduction':baseline_check,'overlap_normalized_texts':overlaps,
+            'validation_used_for_hyperparameter_selection':False,
+            'test_accessed':False,'responses_regenerated':False,
+            'cost_matching_uses_observed_validation_lengths':True,
+            'prospective_cost_forecast':'shared historical P2 A0 lengths, transductive unlabeled validation features'}
+    save_json(out/'config.json',config)
+    save_json(out/'cv_beta_selection.json',{'selected_beta':selected,
+             'metrics':{str(k):v for k,v in cv_metrics.items()},'folds':cv_folds})
+    save_csv(out/'cost_diagnostics.csv', ['method','dataset','n','mae','rmse','spearman',
+                                         'pred_mean','actual_mean','bias_pred_minus_actual'],diagnostic_rows)
+    save_csv(out/'equal_budget.csv',['budget','method','dataset','accuracy_pct','actual_tokens',
+                                      'nothinking_fraction','uplift_vs_random_pp'],csv_budget)
+    save_csv(out/'paired_bootstrap.csv',['budget','comparison','difference_pp','ci95_low_pp',
+                                         'ci95_high_pp','bootstrap_repetitions'],csv_bootstrap)
+    save_json(out/'validation_pre_generation_scores.json',{'strict_val_sha256':base.VAL_SHA256,
+            'scores_are_predictions_only':True,'no_actual_validation_labels_or_tokens':True,
+            'score_direction':'higher = NoThinking first',
+            'methods':score_maps})
+    np.savez_compressed(out/'trained_heads.npz',
+                        a1_mean=a1_fit['mean'],a1_scale=a1_fit['scale'],
+                        a1_weight=a1_fit['weight'],a1_intercept=np.array(a1_fit['intercept']),
+                        a2_mean=a2_fit['mean'],a2_scale=a2_fit['scale'],
+                        a2_weight=a2_fit['weight'],a2_intercept=a2_fit['intercept'],
+                        a2_smear=a2_fit['smear'],a2_beta=np.array(selected))
+    save_json(out/'prospective_shared_a0_lengths.json',{
+             'note':'Predicted-only batch threshold; same original A0 length predictions across methods. Actual costs assessed afterwards, not a deployable guarantee.',
+             'results':prospective})
+    summary={'nauc_ac':area,'selected_beta':selected,
+             'a2_training':train_details,'a0_reproduction':baseline_check,
+             'cost_diagnostics':diagnostic_rows,'budget_comparison':budgets,
+             'warnings':['exploratory validation: multiple prior experiments examined same split',
+                         'observed-token interpolation is descriptive, not deployable',
+                         'mean generated tokens omit encoder/router overhead',
+                         'train/validation token-length distribution shift',
+                         'nominal paired bootstrap CIs condition on fixed fitted policies and ignore selection uncertainty']}
+    save_json(out/'summary.json',summary)
+
+    if not args.no_plot:
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            fig,ax=plt.subplots(figsize=(9,5.4))
+            for name in order:
+                ax.plot(args.budgets,[100*r['methods'][name]['groups']['overall']['accuracy'] for r in budgets],
+                        marker='o',label=name)
+            ax.plot(args.budgets,[100*random_at_budget(val,b)['accuracy'] for b in args.budgets],
+                    linestyle='--',label='Global Random')
+            ax.set(xlabel='Mean generated tokens / problem (observed-cost offline replay)',
+                   ylabel='Strict validation accuracy (%)',title='Experiment F: Cost Difference Supervision')
+            ax.legend(); ax.grid(alpha=.25);fig.tight_layout()
+            for ext in ('svg','png'):
+                fig.savefig(out/f'accuracy_token_curve.{ext}',dpi=160)
+            plt.close(fig)
+        except ImportError:
+            print('COST_DIFF_PLOT_SKIPPED matplotlib unavailable',flush=True)
+    print('COST_DIFF_NAUC '+' '.join(f'{name}={area["methods"][name]["nauc_ac"]:+.4f}' for name in order),flush=True)
+    print(f'COST_DIFF_DONE output={out}',flush=True)
+
+
+def self_test():
+    """No cache/GPU/real data required. Checks loss=0 parity & direct head."""
+    import route_e_token_aware as p2
+    from route_e_equal_budget import dense_curve
+    rng=np.random.default_rng(42)
+    n,d=48,7
+    X=rng.normal(size=(n,d))
+    tt=np.maximum(np.exp(4.+X[:,0]*.3+rng.normal(0,.2,n))-1,0)
+    tn=np.maximum(np.exp(3.+X[:,1]*.3+rng.normal(0,.2,n))-1,0)
+    rows=[{'sample_id':f'test:{i}','dataset':'test','t_t':float(tt[i]),
+           't_n':float(tn[i]),'p_t':0.8,'p_n':0.6,'delta':0.2} for i in range(n)]
+    base=p2.ridge_fit(X,p2.target_matrix(rows),.02)
+    a0=p2.predict_heads(base,X)
+    z,_=margin_predict(fit_margin(X,rows,.02,1000.,0.,30,base_fit=base)[0],X)
+    assert np.allclose(z,a0['t_t']-a0['t_n'],rtol=0,atol=1e-9)
+    dmodel=direct_ridge_fit(X,rows,.02,1000.)
+    direct=direct_ridge_predict(dmodel,X)
+    assert np.isfinite(direct).all()
+    m,log=fit_margin(X,rows,.02,1000.,0.1,35,base_fit=base)
+    p,_=margin_predict(m,X)
+    assert np.isfinite(p).all() and log['objective_final']<=log['objective_initial']+1e-7
+    order={r['sample_id']:float(v) for r,v in zip(rows,p)}
+    assert dense_curve(rows,order)[0]['n_nothinking']==0
+    assert dense_curve(rows,order)[-1]['n_nothinking']==n
+    k=fold_assignments(rows,3,42)
+    assert all((k==i).sum()>0 for i in range(3))
+    demo=[{'tokens':10,'accuracy':.2},{'tokens':15,'accuracy':.5},{'tokens':20,'accuracy':.8}]
+    assert abs(auc_cost_sorted(demo,10,20)-5)<1e-10
+    print('COST_DIFF_SELFTEST_PASS (raw-delta ridge, beta0 parity, nonlinear margin, ranking, folds, nAUC)',flush=True)
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    sp=p.add_subparsers(dest='command',required=True)
+    sp.add_parser('self-test')
+    r=sp.add_parser('run')
+    r.add_argument('--out-dir',type=Path,default=DEFAULT_OUT)
+    r.add_argument('--l2',type=float,default=.02)
+    r.add_argument('--delta-scale',type=float,default=1000.)
+    r.add_argument('--betas',type=float,nargs='+',default=list(DEFAULT_BETAS))
+    r.add_argument('--cv-folds',type=int,default=3)
+    r.add_argument('--lbfgs-steps',type=int,default=80)
+    r.add_argument('--budgets',type=float,nargs='+',default=list(DEFAULT_BUDGETS))
+    r.add_argument('--bootstrap-reps',type=int,default=2000)
+    r.add_argument('--seed',type=int,default=42)
+    r.add_argument('--overwrite',action='store_true')
+    r.add_argument('--no-plot',action='store_true')
+    args=p.parse_args()
+    if args.command=='self-test': self_test()
+    else: run(args)
+
+
+if __name__=='__main__':
+    main()
