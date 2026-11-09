@@ -135,3 +135,27 @@ Using the **historical frozen L28 Ridge head**, historical scores reproduced aga
 **Action:** the original rigid `max_abs <= 0.02` preflight gate was replaced on the experiment branch with a multi-factor **train/validation-only functional equivalence gate**: 99th-percentile relative L2 <=0.005, min cosine >=0.99998, historical score replay max error <=0.05 tokens, old-vs-new cost score Spearman >=0.9995, top-k overlap >=98% at predeclared k, zero validation Accuracy change at seven budgets and <=15 tokens mean cost change. This gate is grounded in the *already examined* validation diagnostics, **not** a universal numerical reproducibility tolerance. Record that post-hoc qualification; keep the one-shot L16 selection and historical L28 reference frozen before any test read. If gate fails on server, STOP and investigate, do not relax further based on test outcomes.
 
 **Status:** patched test script committed, remote TC1 evaluation not yet executed. Existing failed test job exited during `prepare` before writing the frozen thresholds, so a fresh run may be submitted after fetching the patched script. Check output files before running to guard against conflicting jobs.
+
+
+## Held-out 485 test completed — TC1 operator log (2026-11-09)
+
+**Status:** TEST COMPLETED in the TC1 log (`TEST_LAYER_FEATURES_SAVED`, seven `TEST_TRANSFER` rows, `TEST_COST_LAYER_DONE`, `COST_LAYER_TEST_PIPELINE_DONE`). The report files were generated server-local but **their full contents, frozen policies, baseline-score audit, nAUC summaries, and bootstrap intervals have not yet been independently read here**. The table below transcribes the operator-provided stdout.
+
+**Primary comparison fixed before this test:** L16 Cost-only Ridge vs historical L28 Cost-only Ridge. Numerical cutoffs were calibrated by nearest observed mean generation tokens on the strict 450-question validation set, and then applied without modification to 485 test questions. Note that each row's displayed budget is a **validation calibration target**, not the realized test cost. Do **not** interpret the accuracy difference between methods at a common row as accuracy at equal realized test-token cost.
+
+| Validation target | L16 test accuracy | L16 actual tokens | L28 test accuracy | L28 actual tokens | L16−L28 accuracy (pp) | L16−L28 actual tokens |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 900 | 72.0232% | 1176.8 | 71.4948% | 1195.0 | +0.528 | −18.2 |
+| 1100 | 72.8093% | 1319.0 | 72.6289% | 1354.3 | +0.180 | −35.3 |
+| **1300 (primary)** | **73.4278%** | **1421.8** | **72.8479%** | **1519.4** | **+0.580** | **−97.6** |
+| 1500 | 73.8531% | 1724.1 | 73.4923% | 1640.6 | +0.361 | +83.5 |
+| 1700 | 74.7938% | 1926.9 | 73.8531% | 1779.5 | +0.941 | +147.4 |
+| 1900 | 75.2577% | 2099.9 | 74.6907% | 1928.2 | +0.567 | +171.7 |
+| 2100 | 75.3351% | 2161.8 | 75.8763% | 2302.8 | −0.541 | −141.0 |
+
+**Reading the result:** At validation targets 900, 1100, and 1300, L16 both improved accuracy and reduced realized output tokens; most compelling is the predeclared primary point (+0.580 pp with 97.6 fewer output tokens, about 6.4% lower token use compared with L28). At 1500, 1700, and 1900, L16 was more accurate but also costlier, so these do not establish equal-token efficiency gains. At 2100, L28 has higher accuracy at higher cost. The strongest supported conclusion is **low-budget empirical Pareto improvement**, not universal superiority across all budgets. These results still exclude router prefill/compute overhead.
+
+**Required final checks before reporting statistical claims:** Inspect `results/route_e/cost_layer_ablation/heldout_485/heldout_test.md` and `heldout_test.json` on TC1 for paired B1300 conditional bootstrap CI, GSM8K/MATH/AIME subgroup results, test-sweep nAUC, exact model/score provenance, and method caveats. Neither a confidence interval nor a statistical-significance claim can be inferred from these seven stdout lines alone. Test outcomes must not be used to reselect L24, change L16, or tune thresholds.
+
+**Provenance:** user-supplied TC1 stdout on 2026-11-09; canonical original test set N=485. Server-local JSON/Markdown not copied into this GitHub document.
+
