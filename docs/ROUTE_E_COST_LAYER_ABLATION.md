@@ -159,3 +159,49 @@ Using the **historical frozen L28 Ridge head**, historical scores reproduced aga
 
 **Provenance:** user-supplied TC1 stdout on 2026-11-09; canonical original test set N=485. Server-local JSON/Markdown not copied into this GitHub document.
 
+
+
+## Final held-out statistical report — TC1 operator output (2026-11-09)
+
+**Status: FINISHED.** The operator supplied the contents of `results/route_e/cost_layer_ablation/heldout_485/heldout_test.md`, completing the previously pending readout. This section transcribes that report. The server-local JSON and per-question raw predictions have not been independently inspected through the GitHub connector. No test-dependent layer reselection or threshold modification was performed.
+
+### Primary, predeclared validation-budget target B=1300
+
+| Metric | L16 (validation-selected) | L28 (historical frozen Cost-only) | L16 minus L28 |
+| --- | ---: | ---: | ---: |
+| Test pooled expected accuracy | **73.4278%** | 72.8479% | **+0.580 percentage points** |
+| Mean actual generated tokens/question | **1,421.8** | 1,519.4 | **−97.6 tokens (−6.4%)** |
+| NoThinking fraction | 0.225 | 0.188 | +0.037 |
+
+**Conditional paired per-question bootstrap (B1300):** L16 minus L28 accuracy **+0.580 pp**, nominal 95% CI **[−0.863, +2.216] pp**. CI includes zero; cannot claim a statistically significant accuracy improvement. This bootstrap is conditional on validation-selected layers and policies and does not cover model/threshold selection uncertainty or sample design uncertainty.
+
+**Not a matched realized-token comparison:** the shared B1300 label means *validation target*, while realized test costs are 1,421.8 and 1,519.4. This point demonstrates observed **Pareto improvement** for L16: slightly higher pooled expected accuracy *and* fewer generated tokens in the held-out evaluation, but not a statistically established population-level superiority or end-to-end inference speedup.
+
+### Per-dataset results (same frozen validation B1300 cutoff)
+
+| Dataset | N | L16 accuracy | L16 actual tok. | L28 accuracy | L28 actual tok. | Accuracy delta | Tokens delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| GSM8K | 330 | 79.09% | 827.2 | 78.18% | 885.8 | +0.91 pp | −58.6 |
+| MATH-500 | 125 | 73.60% | 1,712.6 | 72.80% | 1,750.6 | +0.80 pp | −38.0 |
+| AIME2024 | 30 | **10.42%** | 6,750.3 | **14.37%** | 7,526.1 | **−3.95 pp** | −775.8 |
+
+GSM8K and MATH-500 both show small descriptive accuracy gains and token savings. **AIME2024 suffers an accuracy decrease** despite saving tokens, indicating an important potential failure mode of cost-only routing on hard competition problems. AIME results aggregate 16 cached generations per mode per question, but there are only 30 distinct questions. No per-dataset confidence intervals were provided.
+
+### Descriptive full-test sweep
+
+| Metric | L16 | L28 | L16 minus L28 |
+| --- | ---: | ---: | ---: |
+| Pooled nAUC-AC (accuracy fraction × generated tokens) | **+51.6589** | +49.4122 | +2.2467 |
+| Mean gain in percentage points over global random reference | **+3.1363** | +2.9999 | +0.1364 pp |
+
+These test-sweep AUC values are **post-hoc descriptive**, not a test-optimized deployable budget control policy; no confidence intervals for their differences have been established.
+
+### Final interpretation and decision
+
+1. The frozen P1 Question Representation **layer matters for Cost-only Token Cost routing**. On strict validation, L24 maximized extra-cost Spearman (0.6352), whereas L16 had better low-/mid-budget routing accuracy than the historical final-layer baseline. Predictive cost rank correlation and downstream routing utility are distinct objectives.
+2. The *validation-selected L16* policy yields a small **held-out low-budget descriptive Pareto gain** at the predeclared B1300 setting (+0.580 pp; −97.6 tokens/question), but its conditional bootstrap CI crosses zero. **No statistically significant accuracy gain is established.**
+3. The gain does **not** generalize uniformly: AIME2024 accuracy declines by 3.95 pp, and L16 does not dominate L28 across the full budget sweep.
+4. Training and test inference keep the DeepSeek base **frozen**, using a P1 Assistant-only prompt, layer-specific last-valid-token representations, and train-fitted Ridge log-token-length heads. No LoRA or model generation was used during router inference. Reported cost excludes prefill/router overhead.
+5. **Research status: CLOSED** for the course report and portfolio: no further hyperparameter/layer selection on test. Preserve L28 as the strong historical reference; discuss L16 as a validated exploratory improvement under constrained conditions, rather than an unqualified new best baseline. Test inspection in the wider project may also limit the interpretation of this same 485-question set as a pristine holdout for subsequent hypotheses.
+
+Reference: operator-provided TC1 `heldout_test.md`; results not committed as an independent machine-readable test artifact.
