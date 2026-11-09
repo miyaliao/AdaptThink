@@ -74,3 +74,13 @@ results/route_e/cost_difference/test/
 Validation results: A0 Δt Spearman 0.623, MAE 1,531.8, nAUC +38.3885; A1 Spearman 0.521, MAE 2,597.3, nAUC +38.9911. A2 beta=0 identical to A0. Only the 1,700-token A1−A0 nominal paired interval excluded zero. The independent test asks if A1's slight validation curve uplift transfers while preserving practical cost–accuracy performance.
 
 Stop after the test and write down all findings; do not retune on test.
+
+## One-job Slurm alternative
+
+For a single-GPU TC1 submission, run:
+
+```bash
+sbatch scripts/ntu_route_e_cost_difference_test.sbatch
+```
+
+This sequentially freezes validation thresholds, checks inputs, extracts test P1 features once, scores the frozen heads and evaluates the fixed test set. Existing stage outputs are reused and fingerprint-checked; no stage automatically overwrites old artifacts. Inspect `cost_diff_test_<jobid>.out` and `.err` before interpreting results. GPU is needed only for one-time P1 feature extraction.
