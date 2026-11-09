@@ -1,6 +1,6 @@
 # Experiment F — Independent Canonical Test Evaluation
 
-**Status:** test pipeline implemented and synthetic self-tested. Real TC1 test inference/evaluation has NOT been run.
+**Status: CLOSED — canonical 485-question TC1 test evaluation completed on 2026-11-09.** See [Experiment F Final Results](ROUTE_E_COST_DIFFERENCE_RESULTS.md) for the recorded outcomes and the retained original A0 Cost-only baseline. Re-running or retuning on the test set is not advised.
 
 ## Locked methods
 
@@ -71,7 +71,7 @@ results/route_e/cost_difference/test/
 
 ## Precommitted comparison
 
-Validation results: A0 Δt Spearman 0.623, MAE 1,531.8, nAUC +38.3885; A1 Spearman 0.521, MAE 2,597.3, nAUC +38.9911. A2 beta=0 identical to A0. Only the 1,700-token A1−A0 nominal paired interval excluded zero. The independent test asks if A1's slight validation curve uplift transfers while preserving practical cost–accuracy performance.
+Validation results: A0 Δt Spearman 0.623, MAE 1,531.8, nAUC +38.3885; A1 Spearman 0.521, MAE 2,597.3, nAUC +38.9911. A2 beta=0 identical to A0. Only the 1,700-token A1−A0 nominal paired interval excluded zero. The independent test found descriptive test nAUC-AC A0 **+49.3104** versus A1 **+49.3580** (Δ=+0.0476), with no consistent frozen-threshold dominance. See the final-results report; preserve the original A0 baseline.
 
 Stop after the test and write down all findings; do not retune on test.
 
@@ -84,3 +84,10 @@ sbatch scripts/ntu_route_e_cost_difference_test.sbatch
 ```
 
 This sequentially freezes validation thresholds, checks inputs, extracts test P1 features once, scores the frozen heads and evaluates the fixed test set. Existing stage outputs are reused and fingerprint-checked; no stage automatically overwrites old artifacts. Inspect `cost_diff_test_<jobid>.out` and `.err` before interpreting results. GPU is needed only for one-time P1 feature extraction.
+
+## Completed test readout (operator logs, 2026-11-09)
+
+- Frozen-validation thresholds and descriptive test-cost-matched sweep ran successfully; test AIME repeats were aggregated by question. The runner printed `COST_DIFF_TEST_DONE`.
+- Descriptive nAUC-AC: A0 **+49.3104**, A1 **+49.3580**, A2 **+49.3104** (A2 β=0).
+- For detailed accuracy/token-budget tables and interpretation, see [Experiment F Final Results](ROUTE_E_COST_DIFFERENCE_RESULTS.md).
+- Numeric test-bootstrap and test cost-diagnostic CSV contents were not supplied at closeout; do not claim test statistical significance.
