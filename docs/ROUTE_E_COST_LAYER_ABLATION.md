@@ -52,3 +52,50 @@ Output: `outputs/route_e/cost_layer_ablation/{smoke,full}/{train,val}.npz` and `
 **Historical L28 reproduction status: approximate, not exact.** Spearman .6225 is close to historic .623, and B900/1100/1300/1900/2100 are consistent at the reported precision. However, historical B1500 was 75.56%, new is 75.6581%; historical B1700 was 75.97%, new is 76.1365%. This nonzero mismatch needs a per-question score and rank audit before calling results a controlled comparison. Compare original P1 last-layer cache to new L28 and historical cost heads versus re-fitted costs. Do not treat the SDPA warning as proven harmless without matching historical execution.
 
 **Next step:** verify the L28 prediction/order and original extraction parity. Then, if matched, report full per-dataset and average-cost tradeoffs (not just these 7 points) with paired uncertainty and clearly distinguish validation-selected layers from an untouched final test. Do not tune on sealed test.
+
+## Predeclared held-out evaluation: L16 versus original L28
+
+**Selection locked on 2026-11-09, before this layer-ablation test job:**
+- Primary: L16 P1 Cost-only Ridge (chosen on the reused 450 validation questions).
+- Baseline: original historical L28 Cost-only Ridge weights, not a test-refitted baseline.
+- Main policy: numerical threshold for the validation target of 1,300 generated tokens/question, transferred to the 485 test questions without adjustment. Actual test token cost is reported; it need not equal 1,300.
+- Other seven validation-calibrated points and complete test threshold sweeps are supplementary **descriptive** analyses only; no test-based threshold or layer selection.
+- Test: 485 unique questions (GSM8K 330, MATH-500 125, AIME2024 30). AIME outcomes average 16 cached generations per mode/question; no answer generation is needed.
+- Report pooled/per-dataset Accuracy and actual generated token cost; paired per-question conditional bootstrap at validation-B1300. Comparisons at different actual test costs are NOT matched-token claims.
+- Historic consistency gate: the extracted L28 representations must match the original P1 cache on the 3,000 train / 450 validation samples, and the old Ridge head must reproduce its saved validation scores. If not, abort before seeing test outcomes.
+- Selection was made after multiple comparisons on a reused validation split. Conditional bootstrap is not a correction for selection or multiple testing; prior inspection of the canonical test by other experiments would limit holdout independence.
+
+### Running on NTU TC1
+
+Do not switch branches, clean local files, or discard untracked work. Fetch only the three files needed here:
+
+~~~bash
+cd /tc1home/UG/n2602710a/AdaptThink
+git fetch origin experiment/cost-only-layer-ablation-20261109
+git restore --source=origin/experiment/cost-only-layer-ablation-20261109 --worktree \
+  scripts/route_e_cost_layer_test.py \
+  scripts/ntu_cost_layer_test.sbatch \
+  docs/ROUTE_E_COST_LAYER_ABLATION.md
+source .venv/bin/activate
+
+# Historical artifacts and new validation caches must already exist.
+test -f outputs/route_e/cost_layer_ablation/full/train.npz
+test -f outputs/route_e/cost_layer_ablation/full/val.npz
+test -f outputs/route_e/token_aware/full/ridge_heads.npz
+test -f outputs/route_e/token_aware/full/validation_predictions.json
+test -f outputs/route_e/prompt_ablation/assistant/full/train.npz
+test -f outputs/route_e/prompt_ablation/assistant/full/val.npz
+
+sbatch scripts/ntu_cost_layer_test.sbatch
+~~~
+
+All-in-one job stages: (1) audit L28 and freeze only validation-calibrated policies; (2) GPU test-question P1 prefill extraction for L16/L28; (3) build cached test labels if absent and evaluate frozen policies. Failure in stage 1 stops the job **before** test extraction. Output artifacts are exclusive-create and cannot be overwritten silently.
+
+Expected final outputs:
+- outputs/route_e/cost_layer_ablation/heldout_485/frozen_policies.json
+- outputs/route_e/cost_layer_ablation/heldout_485/l16_cost_head.npz
+- outputs/route_e/cost_layer_ablation/heldout_485/test_features.npz
+- results/route_e/cost_layer_ablation/heldout_485/heldout_test.json
+- results/route_e/cost_layer_ablation/heldout_485/heldout_test.md
+
+**Status:** test execution pending on NTU TC1. Code being committed to GitHub is not a completed remote test.
