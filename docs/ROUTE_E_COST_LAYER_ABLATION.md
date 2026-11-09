@@ -99,3 +99,17 @@ Expected final outputs:
 - results/route_e/cost_layer_ablation/heldout_485/heldout_test.md
 
 **Status:** test execution pending on NTU TC1. Code being committed to GitHub is not a completed remote test.
+
+
+## Held-out preflight stopped at L28 feature parity (2026-11-09)
+
+TC1 test log: `TEST_LAYER_SELFTEST_PASS`, then `L28_FEATURE_PARITY train_max_abs=0.171875 val_max_abs=0.125`; guard requires max abs <= 0.02 and **aborted before test extraction/evaluation**. This is **not a completed held-out result**. Potential FP16 / batch-padding / attention-kernel differences are hypotheses, not verified causes. New layer extraction used batch=4, historical P1 extraction defaulted to batch=8. Historic L28 cost Spearman is approximately replicated, but that alone does not establish feature or policy equivalence.
+
+Before adjusting any guard or running test, perform CPU-only pretest diagnostic:
+```bash
+git fetch origin experiment/cost-only-layer-ablation-20261109
+git restore --source=origin/experiment/cost-only-layer-ablation-20261109 --worktree scripts/route_e_cost_layer_parity.py
+python scripts/route_e_cost_layer_parity.py
+```
+It measures train/validation feature relative L2 and cosine errors; historical Ridge cost prediction on old/new L28 features; Spearman and ranked top-k overlap; and val-only budget-calibrated policy accuracy/token differences. Diagnostics are saved to `results/route_e/cost_layer_ablation/l28_pretest_parity.json`, without accessing test outcomes. **Do not simply increase the numerical tolerance** until the resulting predictions and route ranks are checked. The original test Slurm job is non-resumable with the same output name if `prepare` already writes frozen policy files; check artifacts first.
+
