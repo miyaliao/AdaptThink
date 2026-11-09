@@ -436,3 +436,66 @@ def evaluate(args):
         print('COST_DIFF_TEST_BUDGET '+str(budget)+' '+ ' '.join(
             f'{m}:frozen={100*p2.group_metrics(rows,frozen_policy[m])["overall"]["accuracy"]:.2f}%@{p2.group_metrics(rows,frozen_policy[m])["overall"]["actual_tokens"]:.0f}tok descriptive={100*p2.group_metrics(rows,descr_policy[m])["overall"]["accuracy"]:.2f}%'
             for m in METHODS),flush=True)
+    f.save_csv(OUT/'test_frozen_threshold.csv',list(frozen_rows[0]),frozen_rows)
+    f.save_csv(OUT/'test_descriptive_equal_budget.csv',list(descriptive_rows[0]),descriptive_rows)
+    f.save_csv(OUT/'test_bootstrap.csv',list(bootstrap[0]),bootstrap) if bootstrap else None
+    f.save_csv(OUT/'test_cost_diagnostics.csv',list(regression[0]),regression)
+    f.save_json(OUT/'test_summary.json',{'protocol':'independent 485-question canonical test, per-question AIME 16-repeat aggregation',
+          'test_split':manifest,'grade_hashes':grade_hashes,'frozen_policy_sha256':sha(OUT/'frozen_validation_policies.json'),
+          'pre_generation_score_sha256':sha(OUT/'test_pre_generation_scores.json'),
+          'test_question_n':485,'generation_records_per_mode':935,
+          'selected_beta':cfg['selected_beta'],'nauc_descriptive_test_cost_sorted':area,
+          'frozen_validation_cutoff_results':frozen_rows,'descriptive_test_cost_results':descriptive_rows,
+          'cost_prediction_diagnostics':regression,'paired_bootstrap':bootstrap,
+          'notes':['Final held-out test. Do not use to retune beta or choose a new model.',
+                   'Frozen policy: validation-selected numerical score cutoffs, realized test tokens may differ from requested validation budgets.',
+                   'Descriptive test-cost-matched curve/nAUC uses observed TEST token lengths to interpolate AFTER score ranking; NOT deployable.',
+                   'Accuracy is macro over 485 questions (AIME 30 questions, each pooled from 16 repeats), not over 935 generations.',
+                   'Bootstrap conditions on fixed routers and selected policies; descriptive test interpolation not independent of test token costs.',
+                   'Model/encoder prefill cost excluded from output-token budgets.']})
+    print('COST_DIFF_TEST_NAUC_DESCRIPTIVE '+' '.join(f'{m}={area["methods"][m]["nauc_ac"]:+.4f}' for m in METHODS),flush=True)
+    print(f'COST_DIFF_TEST_DONE output={OUT}',flush=True)
+
+
+def self_test(_):
+    scores=np.array([40,30,20,10],dtype=float)
+    for k in range(5):
+        cut=frozen_threshold(scores,k)
+        assert int(np.sum(scores>=cut))==k
+    cut={'left_cutoff':frozen_threshold(scores,1),'right_cutoff':frozen_threshold(scores,3),
+         'mix_right_probability':0.25}
+    np.testing.assert_allclose(frozen_pn(scores,cut),[1,.25,.25,0])
+    from route_e_equal_budget import dense_curve
+    rows=[dict(sample_id=f'math:{i}',dataset='math',p_t=.9,p_n=.8,t_t=100,t_n=10)
+          for i in range(4)]
+    c=dense_curve(rows,{r['sample_id']:float(v) for r,v in zip(rows,scores)})
+    assert len(c)==5
+    assert abs(c[0]['tokens']-100)<1e-10 and abs(c[-1]['tokens']-10)<1e-10
+    print('COST_DIFF_TEST_SELFTEST_PASS (frozen cutoffs, mixture, score direction, curve)',flush=True)
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    sub=p.add_subparsers(dest='command',required=True)
+    for s in ('check','self-test','freeze','extract','score','evaluate'):
+        c=sub.add_parser(s)
+        if s in ('freeze','score','evaluate'):
+            c.add_argument('--overwrite',action='store_true')
+        if s=='extract':
+            c.add_argument('--model',default=None)
+            c.add_argument('--max-length',type=int,default=1024)
+            c.add_argument('--batch-size',type=int,default=8)
+        if s=='evaluate':
+            c.add_argument('--bootstrap-reps',type=int,default=2000)
+    args=p.parse_args()
+    if args.command=='self-test':self_test(args)
+    elif args.command=='check':check(args)
+    elif args.command=='freeze':freeze(args)
+    elif args.command=='extract':
+        if args.batch_size<=0 or args.max_length<=0: p.error('Invalid extraction dimensions')
+        extract(args)
+    elif args.command=='score':score(args)
+    elif args.command=='evaluate':evaluate(args)
+
+
+if __name__=='__main__': main()
