@@ -101,7 +101,7 @@ At `λ=0`, Utility-Hard shares the Classification hard target, and Utility-Soft 
 
 **Research decision:** stop further λ search on this reused validation split. Keep the four choices above as preselected development configurations; freeze each model, λ and routing score definition before a single independent test comparison. Measured-cost interpolation is descriptive; router/encoder overhead and statistical significance remain unassessed.
 
-### Utility-Original — continuous Utility regression (implementation added; results pending)
+### Utility-Original — completed direct-Utility regression (2026-11-09)
 
 The initial four-arm study compared hard and soft **classification supervision**, but omitted direct regression of the **raw utility gap**. The missing third objective is now implemented as a separate ablation (without changing or unlocking the frozen Hard/Soft validation results):
 
@@ -125,7 +125,22 @@ sbatch --export=ALL,ORIGINAL_SMOKE=1 scripts/ntu_utility_original.sbatch
 sbatch scripts/ntu_utility_original.sbatch
 ```
 
-New outputs remain separate under `outputs/route_e/p1_utility_original/`, `outputs/external_modernbert/utility_original/` and `results/route_a/utility_original/{p1,modernbert}/`. Each run saves 450-question predictions, model/head artifacts, all 451 threshold policies, cost-sorted nAUC-AC, seven supplementary matched budgets, and a validation-selected λ. The [comparison script](../scripts/compare_utility_objectives.py) merges the new Original results with previously archived Hard/Soft sweeps to produce `three_utility_objectives_nauc.csv` and a same-λ figure. No test labels or DeepSeek generations are used. **No Utility-Original accuracy or nAUC result is claimed before execution.** The previously frozen Hard/Soft λ selections remain unchanged; this addition completes the *objective-family* ablation, not a new search over their λ values.
+New outputs remain separate under `outputs/route_e/p1_utility_original/`, `outputs/external_modernbert/utility_original/` and `results/route_a/utility_original/{p1,modernbert}/`. Each run saves 450-question predictions, model/head artifacts, all 451 threshold policies, cost-sorted nAUC-AC, seven supplementary matched budgets, and a validation-selected λ. The [comparison script](../scripts/compare_utility_objectives.py) merges the new Original results with previously archived Hard/Soft sweeps to produce `three_utility_objectives_nauc.csv` and a same-λ figure. No test labels or DeepSeek generations are used. **Utility-Original validation runs completed on both encoders** (TC1 console output transcribed; no sealed test run claimed). The previously frozen Hard/Soft λ selections remain unchanged; this addition completes the *objective-family* ablation, not a new search over their λ values.
+
+**Completed same-λ nAUC-AC ablation (strict validation 450; λ grid and metric unchanged):**
+
+| λ | ModernBERT Original | ModernBERT Hard | ModernBERT Soft | P1 Original | P1 Hard | P1 Soft |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | -22.9737 | -6.9232 | +10.8881 | +6.0563 | +23.4831 | +12.5783 |
+| .005 | -26.9542 | +9.0501 | +8.1061 | +8.5275 | +18.4131 | +15.7371 |
+| .01 | +1.1518 | **+18.8579** | -1.8952 | +11.8777 | +27.0395 | +17.6368 |
+| .02 | **+10.8771** | +9.2095 | -2.0725 | +15.8588 | **+29.7983** | +22.1108 |
+| .05 | -2.5152 | -3.7894 | -1.9209 | +25.4419 | +3.2595 | +31.1228 |
+| .10 | +10.3301 | -4.0198 | **+22.0032** | **+31.2197** | +26.4246 | **+36.3521** |
+
+**Findings:** Validation-selected Utility-Soft (λ=.10) is the best of the three Utility targets for *both* encoders: ModernBERT +22.0032 and P1 +36.3521 nAUC-AC. Direct Utility-Original MSE peaks at λ=.02 for ModernBERT (+10.8771), and λ=.10 for frozen P1 (+31.2197); neither exceeds its own Utility-Soft optimum. P1 Cost-only remains a separate reference at **+38.3885**. This is **validation-selected**, not an independent test conclusion; the previously frozen Hard/Soft checkpoints and λ choices are unchanged.
+
+**Archived combined data:** [three-objective six-λ comparison CSV](../results/route_a/utility_objective/three_objective_lambda_comparison_val450.csv), transcribed from TC1 output. Original prediction files, trained heads and checkpoints remain on TC1 and are not committed in this summary. `THREE_OBJECTIVE_PLOT_SKIPPED: matplotlib unavailable` affects only local plot creation; the CSV/nAUC calculations completed.
 
 ### Main comparison: routing 50% of validation questions to NoThinking
 
