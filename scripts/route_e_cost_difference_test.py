@@ -303,3 +303,136 @@ def extract(args):
     np.savez_compressed(FEATURES,X=combined,sample_id=np.array([r['sample_id'] for r in rows]),
                         metadata_json=np.array(json.dumps(report)))
     print(f'COST_DIFF_TEST_FEATURES_SAVED {FEATURES}',flush=True)
+
+
+def load_test_features():
+    rows,manifest=test_questions()
+    with np.load(FEATURES,allow_pickle=False) as d:
+        X=d['X'].astype(np.float64)
+        ids=d['sample_id'].astype(str).tolist()
+        meta=load_metadata(d)
+    if ids != [r['sample_id'] for r in rows] or X.shape!=(485,1536) or not np.isfinite(X).all():
+        raise ValueError('Test features / canonical 485 IDs mismatch')
+    if meta['schema']!='route_e_cost_difference_test_p1_v1' or meta['source_manifest']!=manifest or meta['sample_count']!=485:
+        raise ValueError('Wrong P1 test metadata or source hashes')
+    reference=train_feature_metadata()
+    for k in ('model','chat_template_sha256','layer','pooling','prompt_mode'):
+        if meta[k]!=reference[k]:
+            raise ValueError(f'Test feature provenance mismatch on {k}')
+    if meta['train_feature_cache_sha256']!=sha(P1_TRAIN):
+        raise ValueError('Original train feature cache changed')
+    return rows, X, manifest
+
+
+def score(args):
+    """Only test questions/hidden states/heads; no test grades."""
+    import route_e_token_aware as p2
+    cfg=load_json(VALIDATION_CONFIG)
+    if cfg['selected_beta'] != 0:
+        raise ValueError('Expected locked Experiment F beta=0 from train CV')
+    rows,X,manifest=load_test_features()
+    with np.load(P2_HEADS,allow_pickle=False) as d:
+        a0={k:d[k] for k in ('mean','scale','weight','intercept','smear')}
+    with np.load(TRAINED,allow_pickle=False) as d:
+        saved={k:d[k] for k in d.files}
+    if saved['a2_beta'].item()!=cfg['selected_beta']:
+        raise ValueError('Stored A2 beta differs from locked experiment config')
+    a0_pred=p2.predict_heads(a0,X)
+    t0=a0_pred['t_t']-a0_pred['t_n']
+    a1={'mean':saved['a1_mean'],'scale':saved['a1_scale'],
+        'weight':saved['a1_weight'],'intercept':float(saved['a1_intercept']),
+        'delta_scale':cfg['delta_scale']}
+    t1=f.direct_ridge_predict(a1,X)
+    a2={'mean':saved['a2_mean'],'scale':saved['a2_scale'],'weight':saved['a2_weight'],
+        'intercept':saved['a2_intercept'],'smear':saved['a2_smear']}
+    t2,_=f.margin_predict(a2,X)
+    if not np.allclose(t0,t2,rtol=0,atol=1e-4):
+        raise RuntimeError('A2 beta=0 MUST equal A0 on independent test features')
+    out={'schema':'route_e_cost_difference_test_scores_v1',
+         'test_source_manifest':manifest,'test_features_sha256':sha(FEATURES),
+         'experiment_f_config_sha256':sha(VALIDATION_CONFIG),
+         'trained_heads_sha256':sha(TRAINED),'original_p2_heads_sha256':sha(P2_HEADS),
+         'selected_beta':cfg['selected_beta'],
+         'scores_are_pre_generation_only':True,
+         'modes':{name:{r['sample_id']:float(z) for r,z in zip(rows,arr)}
+                  for name,arr in zip(METHODS,(t0,t1,t2))}}
+    safe_write(OUT/'test_pre_generation_scores.json',out,args.overwrite)
+    print('COST_DIFF_TEST_SCORE_PASS test_grades_read=0 n=485 beta=0 A2_equals_A0=1',flush=True)
+
+
+def frozen_pn(scores, cut):
+    s=np.asarray(scores,dtype=np.float64)
+    w=float(cut['mix_right_probability'])
+    return (1-w)*(s>=float(cut['left_cutoff']))+w*(s>=float(cut['right_cutoff']))
+
+
+def evaluate(args):
+    import route_e_token_aware as p2
+    from route_e_equal_budget import dense_curve,linear_bracket,random_at_budget
+    questions,manifest=test_questions()
+    pol=load_json(OUT/'frozen_validation_policies.json')
+    score_file=load_json(OUT/'test_pre_generation_scores.json')
+    cfg=load_json(VALIDATION_CONFIG)
+    if pol['validation_score_sha256']!=sha(VALIDATION_SCORES) or pol['validation_config_sha256']!=sha(VALIDATION_CONFIG):
+        raise ValueError('Frozen validation policy provenance drifted')
+    if score_file['experiment_f_config_sha256']!=sha(VALIDATION_CONFIG) or score_file['test_source_manifest']!=manifest:
+        raise ValueError('Test scores are stale/mismatched')
+    if score_file['test_features_sha256']!=sha(FEATURES) or score_file['trained_heads_sha256']!=sha(TRAINED) or score_file['original_p2_heads_sha256']!=sha(P2_HEADS):
+        raise ValueError('Prediction source weights/features changed')
+    if pol['selected_beta']!=cfg['selected_beta'] or cfg['selected_beta']!=0:
+        raise ValueError('A2 beta changed between validation and test')
+    scores=score_file['modes']
+    ids=[q['sample_id'] for q in questions]
+    if any(set(scores[m])!=set(ids) for m in METHODS):
+        raise ValueError('Test predicted score IDs mismatch')
+    if (OUT/'test_summary.json').exists() and not args.overwrite:
+        raise FileExistsError('Test already evaluated; refusing to overwrite')
+    # Test grades are opened ONLY below, after confirming selected heads,
+    # validation-frozen thresholds, split hashes, and pre-generation scores.
+    rows,grade_hashes=test_grades(questions)
+    curves={m:dense_curve(rows,scores[m]) for m in METHODS}
+    area=f.nauc_summary(curves,rows)
+    frozen_rows=[]; descriptive_rows=[]; bootstrap=[]; regression=[]
+    datasets=np.array([r['dataset'] for r in rows])
+    truth=np.array([r['t_t']-r['t_n'] for r in rows])
+    for m in METHODS:
+        pred=np.array([scores[m][sid] for sid in ids])
+        for ds in ('overall','gsm8k','math','aime'):
+            mask=np.ones(len(rows),dtype=bool) if ds=='overall' else (datasets==ds)
+            diag=p2.regression_metrics(pred[mask],truth[mask])
+            regression.append({'method':m,'dataset':ds,'n':int(mask.sum()), **diag})
+    for j,budget in enumerate(cfg['budgets']):
+        old={'frozen':{},'descriptive':{}}
+        frozen_policy={}; descr_policy={}
+        for m in METHODS:
+            vals=np.array([scores[m][sid] for sid in ids])
+            spec=pol['methods'][m][j]
+            if spec['requested_validation_budget']!=budget:
+                raise ValueError('Frozen validation budget differs from locked config')
+            pn=frozen_pn(vals,spec)
+            gm=p2.group_metrics(rows,pn)
+            frozen_policy[m]=pn
+            for ds,g in gm.items():
+                frozen_rows.append({'validation_budget_target':budget,'method':m,'dataset':ds,
+                    'test_accuracy_pct':100*g['accuracy'],'test_actual_tokens':g['actual_tokens'],
+                    'test_nt_fraction':g['nothinking_fraction'],
+                    'test_budget_error':g['actual_tokens']-budget if ds=='overall' else ''})
+            bracket=linear_bracket(curves[m],budget)
+            pn=p2.nt_prob_at_bracket(rows,scores[m],bracket)
+            gm=p2.group_metrics(rows,pn)
+            descr_policy[m]=pn
+            rnd=random_at_budget(rows,budget)
+            for ds,g in gm.items():
+                descriptive_rows.append({'test_actual_token_budget':budget,'method':m,'dataset':ds,
+                    'test_accuracy_pct':100*g['accuracy'],'test_nt_fraction':g['nothinking_fraction'],
+                    'uplift_vs_global_random_pp':100*(g['accuracy']-rnd['accuracy']) if ds=='overall' else ''})
+        for method_a,method_b in ((METHODS[1],METHODS[0]),(METHODS[2],METHODS[0])):
+            for kind,policies in (('frozen_validation_threshold',frozen_policy),('descriptive_test_cost_match',descr_policy)):
+                ci=p2.paired_bootstrap(rows,policies[method_a],policies[method_b],args.bootstrap_reps,42+int(budget))
+                if ci is not None:
+                    bootstrap.append({'budget':budget,'protocol':kind,'comparison':method_a+' - '+method_b,
+                          'difference_pp':ci['difference_pp'],'ci_95_low_pp':ci['ci_95_pp'][0],
+                          'ci_95_high_pp':ci['ci_95_pp'][1], 'n_bootstrap':ci['repetitions']})
+        print('COST_DIFF_TEST_BUDGET '+str(budget)+' '+ ' '.join(
+            f'{m}:frozen={100*p2.group_metrics(rows,frozen_policy[m])["overall"]["accuracy"]:.2f}%@{p2.group_metrics(rows,frozen_policy[m])["overall"]["actual_tokens"]:.0f}tok descriptive={100*p2.group_metrics(rows,descr_policy[m])["overall"]["accuracy"]:.2f}%'
+            for m in METHODS),flush=True)
