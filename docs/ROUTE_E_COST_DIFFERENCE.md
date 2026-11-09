@@ -52,7 +52,7 @@ cd /tc1home/UG/n2602710a/AdaptThink
 source .venv/bin/activate
 export OPENBLAS_NUM_THREADS=4 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4
 
-# Copy the Experiment F script from the supplied bundle to scripts/
+# Experiment F is already committed to this branch; no manual copy required
 python scripts/route_e_cost_difference.py self-test
 python scripts/route_e_token_aware.py check
 python scripts/route_e_cost_difference.py run
