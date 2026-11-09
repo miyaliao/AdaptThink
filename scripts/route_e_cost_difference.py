@@ -208,3 +208,203 @@ def select_beta_cv(X, rows, betas, folds, seed, l2, scale, max_iter):
         va_idx = np.flatnonzero(assign == k)
         tr_rows = [rows[i] for i in tr_idx]
         base = p2.ridge_fit(X[tr_idx], p2.target_matrix(tr_rows), l2)
+        for beta in betas:
+            model, train_meta = fit_margin(X[tr_idx], tr_rows, l2, scale, beta, max_iter, base_fit=base)
+            pred, _ = margin_predict(model, X[va_idx])
+            oof[beta][va_idx] = pred
+            diag = p2.regression_metrics(pred, truth[va_idx])
+            per_fold.append({'fold': k, 'beta': beta, 'train_n': len(tr_idx),
+                             'oof_n': len(va_idx), 'spearman': diag['spearman'],
+                             'mae': diag['mae'], 'train_meta': train_meta})
+    metrics={}
+    for beta,preds in oof.items():
+        if not np.isfinite(preds).all():
+            raise AssertionError('Incomplete CV predictions')
+        metrics[beta]=p2.regression_metrics(preds, truth)
+    # No test or held-out validation outcomes enter beta choice.
+    # Deterministic preference for smaller beta on a tied OOF Spearman.
+    selected = sorted(betas, key=lambda b: (-(metrics[b]['spearman'] if metrics[b]['spearman'] is not None else -2), b))[0]
+    return selected, metrics, per_fold
+
+
+def auc_cost_sorted(curve, low, high):
+    """Matches scripts/compute_nauc_ac.py's 451-cost-sorted trapezoid method."""
+    from bisect import bisect_left
+    points=sorted((float(r['tokens']), float(r['accuracy'])) for r in curve)
+    merged=[]
+    for x,y in points:
+        if merged and merged[-1][0]==x:
+            merged[-1][1]+=y
+            merged[-1][2]+=1
+        else:
+            merged.append([x,y,1])
+    xs=[z[0] for z in merged]
+    ys=[z[1]/z[2] for z in merged]
+    if xs[0]>low+1e-7 or xs[-1]<high-1e-7:
+        raise ValueError('Curve does not cover endpoint costs')
+    def at(x):
+        j=bisect_left(xs,x)
+        if j<len(xs) and abs(xs[j]-x)<1e-9: return ys[j]
+        if j==0 or j==len(xs): raise ValueError('Interpolation out of range')
+        a,b=xs[j-1],xs[j]
+        return ys[j-1]+(ys[j]-ys[j-1])*(x-a)/(b-a)
+    grid=[low]+[x for x in xs if low<x<high]+[high]
+    values=[at(x) for x in grid]
+    return sum((values[i]+values[i+1])*0.5*(grid[i+1]-grid[i]) for i in range(len(grid)-1))
+
+
+def nauc_summary(curves, val):
+    n=len(val)
+    low=sum(r['t_n'] for r in val)/n
+    high=sum(r['t_t'] for r in val)/n
+    a_low=sum(r['p_n'] for r in val)/n
+    a_high=sum(r['p_t'] for r in val)/n
+    if low>=high: raise ValueError('Unexpected NT/T cost endpoints')
+    baseline=0.5*(a_low+a_high)*(high-low)
+    out={}
+    for method,curve in curves.items():
+        auc=auc_cost_sorted(curve,low,high)
+        backtracks=sum(curve[i+1]['tokens']<curve[i]['tokens']-1e-9 for i in range(len(curve)-1))
+        out[method]={'auc_ac': auc, 'nauc_ac': auc-baseline,
+                     'mean_gain_pp': 100*(auc-baseline)/(high-low),
+                     'cost_backtracks': backtracks}
+    return {'baseline_auc': baseline, 'lower_tokens': low, 'upper_tokens': high,
+            'methods': out}
+
+
+def validate_source_a0(val, score_map, expected_path, p2_report_path, budgets):
+    """Exact A0 reproduction against the historic cost-only source report."""
+    import route_e_cost_only as old_cost
+    rows = old_cost.get_validation()
+    if [r['sample_id'] for r in val] != [r['sample_id'] for r in rows]:
+        raise RuntimeError('Canonical validation ID mismatch')
+    maps, pred, report, _ = old_cost.read_sources(rows, expected_path, p2_report_path)
+    old_cost.validate_original(rows, maps, report, budgets)
+    src = maps['Cost_only']
+    if set(score_map) != set(src):
+        raise RuntimeError('A0 predicted ID mismatch')
+    abs_err=max(abs(score_map[s]-src[s]) for s in src)
+    if abs_err > 1e-5:
+        raise RuntimeError(f'A0 differs from saved historical Cost-only scores, max={abs_err:g}')
+    return {'prediction_max_abs_error': abs_err,
+            'saved_prediction_sha256': hash_file(expected_path),
+            'original_p2_report_sha256': hash_file(p2_report_path),
+            'source_ranking_matches': True}
+
+
+def predicted_only_budget(val, baseline_lengths, score, budgets):
+    """Prospective diagnostic: SHARED original A0 length forecasts for every arm.
+
+    The top-k ordering uses each arm's own predicted delta; budget bracket is
+    selected from common A0 predicted lengths, NEVER observed validation cost.
+    This intentionally isolates score ordering, NOT native cost calibration of A1.
+    """
+    import route_e_token_aware as p2
+    out=[]
+    for budget in budgets:
+        q=p2.prospective_budget_policy(val, baseline_lengths, -np.asarray(score), float(budget))
+        out.append(q)
+    return out
+
+
+def run(args):
+    import route_e_frozen as base
+    import route_e_token_aware as p2
+    from route_e_equal_budget import dense_curve, linear_bracket, random_at_budget
+
+    out=Path(args.out_dir)
+    if out.exists() and not args.overwrite:
+        raise FileExistsError(f'{out} already exists: pass --overwrite for NEW experiment F only')
+    if args.l2!=0.02:
+        raise ValueError('Keep historical A0 l2=0.02 for controlled comparison')
+    if len(args.betas)!=len(set(args.betas)) or 0. not in args.betas or any(b<0 for b in args.betas):
+        raise ValueError('Betas must be unique, nonnegative, and include 0')
+    if len(args.budgets)!=len(set(args.budgets)) or any(b<=0 for b in args.budgets):
+        raise ValueError('Invalid budgets')
+    if args.bootstrap_reps<0: raise ValueError('Invalid bootstrap repetitions')
+
+    train, val, Xtr, Xva, tm, vm, overlaps = p2.read_protocol_and_cache(False)
+    if len(train)!=3000 or len(val)!=450:
+        raise AssertionError('Strict 3000/450 protocol required')
+    srcpred=base.ROOT/'outputs/route_e/token_aware/full/validation_predictions.json'
+    srcp2=base.ROOT/'results/route_e/token_aware/full/validation.json'
+    if not srcpred.is_file() or not srcp2.is_file():
+        raise FileNotFoundError('Run original P2 token-aware full stage before Experiment F')
+
+    # A0 is refit deterministically only for exact numeric auditing; the frozen
+    # historical source is the benchmark, never overwritten/replaced.
+    a0_fit=p2.ridge_fit(Xtr,p2.target_matrix(train),args.l2)
+    a0_pred=p2.predict_heads(a0_fit,Xva)
+    a0_delta=a0_pred['t_t']-a0_pred['t_n']
+    score_maps={'A0_existing_cost_only': {r['sample_id']:float(z) for r,z in zip(val,a0_delta)}}
+    baseline_check=validate_source_a0(val,score_maps['A0_existing_cost_only'],srcpred,srcp2,
+                                      [float(b) for b in args.budgets])
+    print(f'COST_DIFF_A0_REPRO_PASS max_abs_diff={baseline_check["prediction_max_abs_error"]:.3g}',flush=True)
+
+    a1_fit=direct_ridge_fit(Xtr,train,args.l2,args.delta_scale)
+    a1_delta=direct_ridge_predict(a1_fit,Xva)
+    score_maps['A1_direct_delta']={r['sample_id']:float(z) for r,z in zip(val,a1_delta)}
+
+    selected,cv_metrics,cv_folds=select_beta_cv(Xtr,train,args.betas,args.cv_folds,
+                                                args.seed,args.l2,args.delta_scale,args.lbfgs_steps)
+    print('COST_DIFF_TRAIN_ONLY_CV '+ ' '.join(f'beta={b:g}:rho={cv_metrics[b]["spearman"]:.4f}' for b in args.betas),flush=True)
+    print(f'COST_DIFF_SELECTED_BETA {selected:g}',flush=True)
+    a2_fit,train_details=fit_margin(Xtr,train,args.l2,args.delta_scale,selected,
+                                    args.lbfgs_steps,base_fit=a0_fit)
+    a2_delta,a2_lengths=margin_predict(a2_fit,Xva)
+    score_maps['A2_margin_selected']={r['sample_id']:float(z) for r,z in zip(val,a2_delta)}
+    if selected==0 and not np.allclose(a0_delta,a2_delta,rtol=0,atol=1e-6):
+        raise AssertionError('A2 beta=0 should reproduce original A0')
+
+    truth=np.asarray([r['t_t']-r['t_n'] for r in val])
+    diagnostic_rows=[]
+    for name,scores in score_maps.items():
+        pred=np.asarray([scores[r['sample_id']] for r in val])
+        for ds in ['overall']+sorted(set(r['dataset'] for r in val)):
+            mask=np.ones(len(val),dtype=bool) if ds=='overall' else np.array([r['dataset']==ds for r in val])
+            diag=p2.regression_metrics(pred[mask],truth[mask])
+            diagnostic_rows.append({'method':name,'dataset':ds,'n':int(mask.sum()), **diag})
+
+    curves={name:dense_curve(val,scores) for name,scores in score_maps.items()}
+    area=nauc_summary(curves,val)
+    budgets=[]; csv_budget=[]; csv_bootstrap=[]
+    order=list(score_maps)
+    for budget in args.budgets:
+        record={'budget':float(budget),'methods':{},'paired_bootstrap':{}}
+        rand=random_at_budget(val,budget)
+        pn_map={}
+        for name in order:
+            curve=curves[name]
+            bracket=linear_bracket(curve,budget)
+            pn=p2.nt_prob_at_bracket(val,score_maps[name],bracket)
+            groups=p2.group_metrics(val,pn)
+            if abs(groups['overall']['actual_tokens']-budget)>1e-4:
+                raise AssertionError('Measured-cost replay mismatch')
+            pn_map[name]=pn
+            record['methods'][name]={'mix':bracket,'groups':groups,
+                                     'uplift_vs_global_random_pp':100*(groups['overall']['accuracy']-rand['accuracy'])}
+            for ds,g in groups.items():
+                csv_budget.append({'budget':budget,'method':name,'dataset':ds,
+                                   'accuracy_pct':100*g['accuracy'],'actual_tokens':g['actual_tokens'],
+                                   'nothinking_fraction':g['nothinking_fraction'],
+                                   'uplift_vs_random_pp':100*(g['accuracy']-rand['accuracy']) if ds=='overall' else ''})
+        for left,right in ((order[1],order[0]),(order[2],order[0]),(order[2],order[1])):
+            label=left+'_minus_'+right
+            boot=p2.paired_bootstrap(val,pn_map[left],pn_map[right],args.bootstrap_reps,args.seed+int(budget))
+            record['paired_bootstrap'][label]=boot
+            if boot:
+                csv_bootstrap.append({'budget':budget,'comparison':label,
+                                      'difference_pp':boot['difference_pp'],
+                                      'ci95_low_pp':boot['ci_95_pp'][0],
+                                      'ci95_high_pp':boot['ci_95_pp'][1],
+                                      'bootstrap_repetitions':boot['repetitions']})
+        budgets.append(record)
+        print('COST_DIFF_BUDGET '+str(budget)+' '+ ' '.join(f'{name}={100*record["methods"][name]["groups"]["overall"]["accuracy"]:.2f}%' for name in order),flush=True)
+
+    # Predicted-cost-only diagnostic. One COMMON original-P2 length forecast
+    # is used across A0/A1/A2, so this compares ordering, NOT recalibration.
+    prospective={}
+    for name,scores in score_maps.items():
+        score=np.asarray([scores[r['sample_id']] for r in val],dtype=np.float64)
+        prospective[name]=predicted_only_budget(val,{'t_t':a0_pred['t_t'],'t_n':a0_pred['t_n']},
+                                               score,args.budgets)
