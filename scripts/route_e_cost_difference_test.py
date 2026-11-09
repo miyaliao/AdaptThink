@@ -182,3 +182,124 @@ def frozen_threshold(sorted_scores,k):
     if not y<z<x:
         raise ValueError('Numerically unseparable score cutoff')
     return z
+
+
+def freeze(args):
+    """Freeze seven validation-selected thresholds; DOES NOT open test files."""
+    import route_e_frozen as base
+    from route_e_equal_budget import dense_curve,linear_bracket
+    import route_e_token_aware as p2
+    from train_modernbert_delta import read_labels
+    cfg=load_json(VALIDATION_CONFIG)
+    if cfg['train_sha256']!=base.TRAIN_SHA256 or cfg['val_sha256']!=base.VAL_SHA256 or cfg['train_n']!=3000 or cfg['val_n']!=450:
+        raise ValueError('Invalid original Experiment F provenance')
+    if not math.isclose(float(cfg['selected_beta']),0.,abs_tol=1e-12):
+        raise ValueError('Selected beta changed: freeze should be reviewed before test')
+    if sha(VALIDATION)!=base.VAL_SHA256:
+        raise ValueError('Strict validation hash mismatch')
+    val=read_labels(VALIDATION)
+    scores_file=load_json(VALIDATION_SCORES)
+    if scores_file['strict_val_sha256']!=base.VAL_SHA256 or not scores_file['scores_are_predictions_only']:
+        raise ValueError('Invalid validation predictions')
+    scores=scores_file['methods']
+    ids=[r['sample_id'] for r in val]
+    report={'source':'validation-frozen cutoff mixture (NOT test-cost calibration)',
+            'validation_score_sha256':sha(VALIDATION_SCORES),
+            'validation_config_sha256':sha(VALIDATION_CONFIG),
+            'validation_labels_sha256':base.VAL_SHA256,
+            'selected_beta':cfg['selected_beta'],'methods':{}}
+    for method in METHODS:
+        if set(scores[method])!=set(ids):
+            raise ValueError(f'{method}: validation score ID mismatch')
+        rank=sorted(ids,key=lambda sid:(-scores[method][sid],sid))
+        arr=[float(scores[method][sid]) for sid in rank]
+        curve=dense_curve(val,scores[method])
+        anchors=[]
+        for budget in cfg['budgets']:
+            bracket=linear_bracket(curve,float(budget))
+            kl=int(round(bracket['policy_left_fraction']*len(val)))
+            kr=int(round(bracket['policy_right_fraction']*len(val)))
+            left=frozen_threshold(arr,kl)
+            right=frozen_threshold(arr,kr)
+            w=float(bracket['mix_right_probability'])
+            # Verify frozen numerical score cutoff reproduces the VAL policy.
+            v=np.array([scores[method][sid] for sid in ids])
+            pn=(1-w)*(v>=left)+w*(v>=right)
+            prev=p2.nt_prob_at_bracket(val,scores[method],bracket)
+            if not np.allclose(pn,prev,rtol=0,atol=1e-12):
+                raise RuntimeError('Frozen validation threshold does not reproduce original policy')
+            anchors.append({'requested_validation_budget':float(budget),
+                            'val_accuracy':float(bracket['accuracy']),
+                            'left_cutoff':left,'right_cutoff':right,
+                            'mix_right_probability':w,
+                            'validation_k_left':kl,'validation_k_right':kr})
+        report['methods'][method]=anchors
+    safe_write(OUT/'frozen_validation_policies.json',report,args.overwrite)
+    print('COST_DIFF_TEST_FREEZE_PASS validation_only=1 beta=0 methods=3',flush=True)
+
+
+def check(_):
+    rows,manifest=test_questions()
+    meta=train_feature_metadata()
+    print(f'COST_DIFF_TEST_CHECK_PASS n={len(rows)} gsm8k=330 math=125 aime=30 template_sha={meta["chat_template_sha256"][:12]} split_sha={manifest["split_sha256"][:12]}',flush=True)
+
+
+def extract(args):
+    """GPU extraction of P1 features; reads only question texts, never grades."""
+    import torch
+    from transformers import AutoModel,AutoTokenizer
+    import route_e_prompt_ablation as prefix
+    if not torch.cuda.is_available():
+        raise RuntimeError('GPU required for DeepSeek prefill extraction')
+    if FEATURES.exists():
+        raise FileExistsError(f'Refusing to overwrite pre-existing test feature cache: {FEATURES}')
+    rows,manifest=test_questions()
+    meta=train_feature_metadata()
+    model_path=Path(args.model or meta['model'])
+    if not model_path.is_dir():
+        raise FileNotFoundError(model_path)
+    if str(model_path)!=str(meta['model']):
+        raise ValueError('Test checkpoint path differs from training P1 checkpoint path')
+    tokenizer=AutoTokenizer.from_pretrained(str(model_path),local_files_only=True,trust_remote_code=False)
+    tokenizer.padding_side='right'
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token=tokenizer.eos_token
+    th=hashlib.sha256(str(tokenizer.chat_template).encode()).hexdigest()
+    if th!=meta['chat_template_sha256']:
+        raise ValueError('Test tokenizer template differs from train P1')
+    sequences=prefix.tokenize_ablations(tokenizer,[r['problem'] for r in rows],'assistant',args.max_length)
+    model=AutoModel.from_pretrained(str(model_path),torch_dtype=torch.float16,
+                                    local_files_only=True,trust_remote_code=False).to('cuda').eval()
+    for param in model.parameters():param.requires_grad_(False)
+    pads=tokenizer.pad_token_id
+    xs=[];t0=time.perf_counter()
+    with torch.inference_mode():
+        for st in range(0,len(rows),args.batch_size):
+            batch=sequences[st:st+args.batch_size]
+            width=max(len(q) for q in batch)
+            inp=torch.full((len(batch),width),pads,dtype=torch.long,device='cuda')
+            mask=torch.zeros_like(inp)
+            for j,seq in enumerate(batch):
+                inp[j,:len(seq)]=torch.tensor(seq,device='cuda')
+                mask[j,:len(seq)]=1
+            hidden=model(input_ids=inp,attention_mask=mask,return_dict=True,use_cache=False).last_hidden_state
+            loc=torch.tensor([len(seq)-1 for seq in batch],device='cuda')
+            X=hidden[torch.arange(len(batch),device='cuda'),loc].float().cpu().numpy().astype(np.float16)
+            if X.shape!=(len(batch),1536) or not np.isfinite(X).all():
+                raise ValueError('Invalid extracted test embeddings')
+            xs.append(X)
+            if st==0 or st+args.batch_size>=len(rows):
+                print(f'COST_DIFF_TEST_EXTRACT {min(st+args.batch_size,len(rows))}/{len(rows)}',flush=True)
+    combined=np.concatenate(xs,axis=0)
+    report={'schema':'route_e_cost_difference_test_p1_v1',
+            'layer':meta['layer'],'pooling':meta['pooling'],
+            'model':str(model_path),'prompt_mode':'assistant',
+            'chat_template_sha256':th,'source_manifest':manifest,
+            'train_feature_cache_sha256':sha(P1_TRAIN),
+            'feature_dim':1536,'max_length':args.max_length,'dtype':'float16',
+            'elapsed_seconds':time.perf_counter()-t0,
+            'sample_count':485,'grade_files_read':False}
+    FEATURES.parent.mkdir(parents=True,exist_ok=True)
+    np.savez_compressed(FEATURES,X=combined,sample_id=np.array([r['sample_id'] for r in rows]),
+                        metadata_json=np.array(json.dumps(report)))
+    print(f'COST_DIFF_TEST_FEATURES_SAVED {FEATURES}',flush=True)
