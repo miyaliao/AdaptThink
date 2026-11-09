@@ -459,3 +459,17 @@ The actual DeepSeek tokenizer audit **passed on all 3,450 input questions** (3,0
 
 **Reproduction files:** [experiment plan](ROUTE_E_TASK_PROMPT_PLAN.md), `scripts/route_e_task_prompts.py`, `scripts/route_e_task_prompt_curve.py`. The validated full replay saved `results/route_e/task_prompt/curve/accuracy_token_curve.{png,svg,json,csv}` and `budget_points.csv` **on TC1**; these figure/result files are not yet tracked in GitHub. The curves use **mean generated tokens**, *not* per-decode `max_new_tokens` sweeps, and exclude additional encoder-prefill/router overhead. These are exploratory validation results, not a held-out test.
 
+## 9. Experiment F closeout — Cost-Difference Supervision (2026-11-09)
+
+**Research decision: retain the original Frozen DeepSeek P1 Cost-only Router as the preferred cost-aware external-router baseline.** Experiment F compared (A0) the existing separate log-token Ridge Cost Heads, (A1) directly regressing `Δt = t_T - t_N`, and (A2) adding a token-difference Margin Loss. Train-only three-fold CV selected **β=0** for A2, making A2 equal A0.
+
+| Main result | A0 Cost-only | A1 Direct Delta | A2 selected |
+| --- | ---: | ---: | ---: |
+| Strict validation Δt Spearman (450) | **0.6229** | 0.5210 | **0.6229** |
+| Strict validation Δt MAE, tokens | **1,531.8** | 2,597.3 | **1,531.8** |
+| Strict validation nAUC-AC (cost-sorted) | 38.3885 | 38.9911 | 38.3885 |
+| Independent test nAUC-AC (485, **descriptive** test-cost sweep) | 49.3104 | 49.3580 | 49.3104 |
+
+A1's test nAUC increase over A0 was only **+0.0476** and its validation cost prediction was worse. Test results from **validation-frozen numeric thresholds** also showed mixed budget-dependent gains and material realized-budget drift. The descriptive test nAUC uses observed test Token costs **after** routing to interpolate, not an online deployable budget policy. Test cost-diagnostic/Bootstrap CSV numbers were not supplied for this closeout; no test significance claim is made. The 485-question test is considered consumed for this comparison: do not retune on its outcomes.
+
+**Full archived experiment record:** [Experiment F — Final Results and Closeout](ROUTE_E_COST_DIFFERENCE_RESULTS.md). The [experiment script](https://github.com/miyaliao/AdaptThink/blob/feature/route-e-cost-diff-test-20261109/scripts/route_e_cost_difference.py) and [independent test script](https://github.com/miyaliao/AdaptThink/blob/feature/route-e-cost-diff-test-20261109/scripts/route_e_cost_difference_test.py) remain on the dedicated feature branch. Only generated output tokens were included in cost, not the extra DeepSeek prefill / Router overhead.
