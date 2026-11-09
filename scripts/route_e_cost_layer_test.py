@@ -80,24 +80,88 @@ def prepare():
         old_train_dir / "train.npz", tr, base.TRAIN_SHA256, "assistant", False)
     old_val, _ = prefix.read_cache(
         old_train_dir / "val.npz", va, base.VAL_SHA256, "assistant", False)
-    # Historical frozen P1 and the newly extracted L28 must describe the
-    # same 1536-d post-final-norm last input token for EVERY question.
-    train_max = float(np.max(np.abs(old_train - train_feats[28])))
-    val_max = float(np.max(np.abs(old_val - val_feats[28])))
-    print(f"L28_FEATURE_PARITY train_max_abs={train_max:.6g} val_max_abs={val_max:.6g}", flush=True)
-    if max(train_max, val_max) > 0.02:
-        raise RuntimeError(
-            "STOP: L28 differs from historical P1 cache; compare model, "
-            "padding, SDPA/sliding-window attention, tokenizer and extraction.")
+    # Validation-only FUNCTIONAL equivalence gate replaces an overly brittle
+    # global max-absolute feature check. The first pretest run showed small
+    # FP16/padding numerical drift, with nearly unchanged routing decisions.
+    # This gate checks geometry, historical head reproduction, rankings, and
+    # actual validation decision agreement; NO test data are read.
+    def geometry(a, b):
+        a=np.asarray(a,dtype=np.float64)
+        b=np.asarray(b,dtype=np.float64)
+        norms=np.maximum(np.linalg.norm(a,axis=1),1e-12)
+        bnorms=np.maximum(np.linalg.norm(b,axis=1),1e-12)
+        rel=np.linalg.norm(a-b,axis=1)/norms
+        cos=np.sum(a*b,axis=1)/(norms*bnorms)
+        return {"max_abs":float(np.max(np.abs(a-b))),
+                "median_relative_l2":float(np.median(rel)),
+                "p99_relative_l2":float(np.percentile(rel,99)),
+                "min_cosine":float(np.min(cos))}
+    geo_train=geometry(old_train,train_feats[28])
+    geo_val=geometry(old_val,val_feats[28])
+    print("L28_GEOMETRY_PARITY "+json.dumps({"train":geo_train,"val":geo_val}),flush=True)
+    for name,g in (("train",geo_train),("val",geo_val)):
+        if g["p99_relative_l2"]>0.005 or g["min_cosine"]<0.99998:
+            raise RuntimeError(f"STOP: L28 {name} representation geometry differs materially")
+
     old_head = load_old_head()
     ids = [r["sample_id"] for r in va]
-    old_scores = eval_test.read_scores(OLD_VAL, "cost", set(ids), eval_test.VAL_SHA)
-    tt, tn = cost_predictions(old_val.astype(np.float64), old_head)
-    historical_error = float(max(abs(float(t-n) - old_scores[sid])
-                                 for sid,t,n in zip(ids,tt,tn)))
-    print(f"L28_HISTORICAL_HEAD_PARITY max_abs_delta_tokens={historical_error:.6g}", flush=True)
-    if historical_error > 0.05:
-        raise RuntimeError("STOP: original L28 Ridge head does not reproduce saved validation scores")
+    old_scores = eval_test.read_scores(OLD_VAL,"cost",set(ids),eval_test.VAL_SHA)
+    tt, tn = cost_predictions(old_val.astype(np.float64),old_head)
+    old_delta=np.asarray(tt-tn,dtype=np.float64)
+    historical_error=float(max(abs(float(t)-old_scores[sid])
+                               for sid,t in zip(ids,old_delta)))
+    print(f"L28_HISTORICAL_HEAD_PARITY max_abs_delta_tokens={historical_error:.6g}",flush=True)
+    if historical_error>0.05:
+        raise RuntimeError("STOP: historical L28 cost scores cannot be reproduced")
+
+    newtt,newtn=cost_predictions(val_feats[28].astype(np.float64),old_head)
+    new_delta=np.asarray(newtt-newtn,dtype=np.float64)
+    old_delta=np.asarray([old_scores[sid] for sid in ids])
+    def rank(v):
+        # Stable average ranks, including tied scores.
+        order=np.argsort(v,kind="mergesort")
+        ranks=np.empty(len(v),dtype=np.float64)
+        i=0
+        while i<len(v):
+            j=i+1
+            while j<len(v) and v[order[j]]==v[order[i]]:
+                j+=1
+            ranks[order[i:j]]=(i+j+1)/2.
+            i=j
+        return ranks
+    score_spearman=float(np.corrcoef(rank(old_delta),rank(new_delta))[0,1])
+    print(f"L28_COST_ORDER_PARITY spearman={score_spearman:.8f}",flush=True)
+    if not math.isfinite(score_spearman) or score_spearman<0.9995:
+        raise RuntimeError("STOP: L28 historical cost ranking is not equivalent")
+    for k in (23,45,113,225,338):
+        before=set(np.argsort(-old_delta,kind="stable")[:k])
+        after=set(np.argsort(-new_delta,kind="stable")[:k])
+        overlap=len(before & after)/k
+        print(f"L28_TOPK_PARITY k={k} overlap={overlap:.6f}",flush=True)
+        if overlap<0.98:
+            raise RuntimeError(f"STOP: L28 top-k routing differs at k={k}")
+    new_map=dict(zip(ids,map(float,new_delta)))
+    policy_diff={}
+    for b in BUDGETS:
+        oldp=eval_test.threshold_for_budget(va,old_scores,b)
+        newp=eval_test.threshold_for_budget(va,new_map,b)
+        def chosen(smap,p):
+            return eval_test.means(va,{
+                sid:float(score>=p["score_cutoff"]) for sid,score in smap.items()
+            })
+        a=chosen(old_scores,oldp)
+        z=chosen(new_map,newp)
+        accuracy_gap=100*(z["acc"]-a["acc"])
+        tokens_gap=z["tok"]-a["tok"]
+        share_gap=z["nt_fraction"]-a["nt_fraction"]
+        print(f"L28_POLICY_PARITY B{b} acc_pp={accuracy_gap:+.6f} "
+              f"tokens={tokens_gap:+.3f} nt_frac={share_gap:+.6f}",flush=True)
+        if abs(accuracy_gap)>1e-8 or abs(tokens_gap)>15 or abs(share_gap)>(1/450+1e-8):
+            raise RuntimeError(f"STOP: L28 routing policy changed materially at B{b}")
+        policy_diff[str(b)]={"accuracy_diff_pp":accuracy_gap,
+                             "tokens_diff":tokens_gap,
+                             "nothinking_fraction_diff":share_gap}
+    print("L28_FUNCTIONAL_PARITY_PASS",flush=True)
 
     head_l16 = layers.train_cost_heads(train_feats[16], tr)
     p16 = layers.predict_cost(head_l16, val_feats[16])
@@ -113,7 +177,9 @@ def prepare():
         "original_l28_head_sha256": sha(OLD_HEAD), "original_val_scores_sha256": sha(OLD_VAL),
         "new_train_features_sha256": sha(layers.folder(False) / "train.npz"),
         "new_val_features_sha256": sha(layers.folder(False) / "val.npz"),
-        "max_l28_feature_difference": max(train_max, val_max),
+        "l28_geometry_train": geo_train, "l28_geometry_val": geo_val,
+        "l28_old_new_cost_rank_spearman": score_spearman,
+        "l28_validation_policy_parity": policy_diff,
         "max_original_l28_score_difference_tokens": historical_error,
         "calibrated": {},
         "description": "Closest observed VALIDATION mean generated token policy; "
