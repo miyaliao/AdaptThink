@@ -1,6 +1,6 @@
 # Route E / Experiment F — Direct Cost-Difference Supervision
 
-**Status:** implementation + cache-free synthetic tests; no TC1 training / strict validation run claimed.
+**Status: CLOSED — train-only CV and strict 450-question validation completed on 2026-11-09; independent 485-question test also completed.** See [Experiment F Final Results](ROUTE_E_COST_DIFFERENCE_RESULTS.md). Original A0 Cost-only is retained as the preferred baseline.
 
 ## Research question
 
@@ -103,3 +103,7 @@ results/route_e/cost_difference/experiment_f/
 ## Interpretation rules
 
 A1 > A0 supports a better single-difference prediction target; A2 > A0 supports an incremental nonlinear token-margin penalty. Stronger Δt Spearman without higher nAUC means better cost prediction did not yield a better route. Even if A2 improves, do **not** claim it improved quality prediction: A0/A1/A2 use **no quality head at routing time**.
+
+## Completed outcome (2026-11-09)
+
+Train-only three-fold CV selected **β=0** (OOF Δt Spearman 0.4145 vs β=0.1: 0.3651, β=1: 0.3656); therefore A2 is identical to A0. Validation cost-sorted nAUC-AC: **A0 +38.3885**, **A1 +38.9911**, **A2 +38.3885**. A1 had worse validation Δt Spearman (**0.5210** vs **0.6229**) and MAE (**2,597.3** vs **1,531.8**). Independent canonical test descriptive nAUC-AC: **A0 +49.3104**, **A1 +49.3580**, **A2 +49.3104**; this marginal A1 gain did not establish reliable improvement. Continue with **A0 Cost-only** as the frozen preferred baseline; no further validation/test threshold or β tuning. See [full tables, frozen-policy cost drift and limitations](ROUTE_E_COST_DIFFERENCE_RESULTS.md).
