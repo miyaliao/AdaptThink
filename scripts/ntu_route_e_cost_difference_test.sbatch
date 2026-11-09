@@ -15,7 +15,12 @@
 set -euo pipefail
 
 cd /tc1home/UG/n2602710a/AdaptThink
-source .venv/bin/activate
+if [[ -f .venv/bin/activate ]]; then
+    source .venv/bin/activate
+else
+    echo 'No repository .venv found; using inherited Python environment'
+fi
+python -c 'import numpy, torch, transformers; print("COST_DIFF_TEST_ENV_PASS")'
 export PYTHONNOUSERSITE=1
 export TOKENIZERS_PARALLELISM=false
 export OPENBLAS_NUM_THREADS=4
