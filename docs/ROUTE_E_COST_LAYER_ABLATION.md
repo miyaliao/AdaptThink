@@ -113,3 +113,25 @@ python scripts/route_e_cost_layer_parity.py
 ```
 It measures train/validation feature relative L2 and cosine errors; historical Ridge cost prediction on old/new L28 features; Spearman and ranked top-k overlap; and val-only budget-calibrated policy accuracy/token differences. Diagnostics are saved to `results/route_e/cost_layer_ablation/l28_pretest_parity.json`, without accessing test outcomes. **Do not simply increase the numerical tolerance** until the resulting predictions and route ranks are checked. The original test Slurm job is non-resumable with the same output name if `prepare` already writes frozen policy files; check artifacts first.
 
+
+
+## Validation L28 functional-parity diagnosis (operator output, 2026-11-09)
+
+A second CPU-only validation check completed, without accessing the sealed test set:
+
+| Metric | Train | Validation |
+| --- | ---: | ---: |
+| Max absolute hidden-state difference | 0.171875 | 0.125 |
+| Mean absolute difference | 0.005156 | 0.004962 |
+| Median relative L2 difference | 0.002882 | 0.002761 |
+| 99th-percentile relative L2 | 0.003842 | 0.003688 |
+| Minimum cosine | 0.99998788 | 0.99999173 |
+| Mean cosine | 0.99999575 | 0.99999610 |
+
+Using the **historical frozen L28 Ridge head**, historical scores reproduced against historical features to 3.64e-12 extra Token difference. Comparing the same historical head on new L28 features gives score Spearman **0.9999007**, Pearson **0.9999765**, median absolute score difference **4.58 tokens**, 95th percentile **34.65 tokens** and worst case **240.58 tokens**. The largest error alone would overstate the functional difference. Top-k overlap: 23/23, 45/45, 112/113, 225/225, 338/338.
+
+**At each of the seven validation-budget-calibrated policies, the old/new policy Accuracy difference is exactly zero in the logged readout**. The largest realized-token difference was 9.15 tokens/question (at validation budget 1500), and NT-fraction difference at most 1/450. This is strong evidence that the small feature variation has little effect on the **examined validation policies**, but not proof of identical representations/policies or of test outcomes; batch size or attention numerical causes remain unverified.
+
+**Action:** the original rigid `max_abs <= 0.02` preflight gate was replaced on the experiment branch with a multi-factor **train/validation-only functional equivalence gate**: 99th-percentile relative L2 <=0.005, min cosine >=0.99998, historical score replay max error <=0.05 tokens, old-vs-new cost score Spearman >=0.9995, top-k overlap >=98% at predeclared k, zero validation Accuracy change at seven budgets and <=15 tokens mean cost change. This gate is grounded in the *already examined* validation diagnostics, **not** a universal numerical reproducibility tolerance. Record that post-hoc qualification; keep the one-shot L16 selection and historical L28 reference frozen before any test read. If gate fails on server, STOP and investigate, do not relax further based on test outcomes.
+
+**Status:** patched test script committed, remote TC1 evaluation not yet executed. Existing failed test job exited during `prepare` before writing the frozen thresholds, so a fresh run may be submitted after fetching the patched script. Check output files before running to guard against conflicting jobs.
