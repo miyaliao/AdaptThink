@@ -19,6 +19,7 @@ Usage:
 
 import argparse
 import json
+import random
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +42,10 @@ def main():
     parser.add_argument("--manifest", type=Path, default=MANIFEST)
     parser.add_argument("--n-train", type=int, default=300)
     parser.add_argument("--n-val", type=int, default=30)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--max-thinking-tokens", type=float, default=0.0,
+                        help="Keep only problems whose reference Thinking answer is "
+                             "shorter than this, so the RL response cap is not binding")
     parser.add_argument("--out-prefix", default="rl_smoke",
                         help="Output file prefix, e.g. rl_small -> rl_small_train.parquet")
     args = parser.parse_args()
@@ -49,12 +54,28 @@ def main():
 
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     samples = manifest["samples"]
-    if len(samples) < args.n_train + args.n_val:
-        raise RuntimeError("Manifest is smaller than the requested subset")
+    if len(samples) < args.n_train:
+        raise RuntimeError(f"Manifest has {len(samples)} problems, need {args.n_train}")
 
-    # train and val are disjoint slices of the manifest; val is taken from the end
-    train = samples[:args.n_train]
-    val = samples[-args.n_val:]
+    pool = samples
+    if args.max_thinking_tokens > 0:
+        pool = [s for s in samples
+                if float(s.get("mean_len_thinking", 0)) <= args.max_thinking_tokens]
+        print(f"filtered to {len(pool)} problems with Thinking <= "
+              f"{args.max_thinking_tokens:.0f} tokens")
+        if len(pool) < args.n_train:
+            raise RuntimeError(f"only {len(pool)} problems pass the filter, "
+                               f"need {args.n_train}")
+    pool = list(pool)
+    random.Random(args.seed).shuffle(pool)
+    train = pool[:args.n_train]
+    # Validation is only used for periodic eval. This run disables it
+    # (val_before_train=False, test_freq=-1), so when there is no disjoint tail left
+    # the head of the manifest is reused instead of failing.
+    val = samples[args.n_train:args.n_train + args.n_val]
+    if len(val) < args.n_val:
+        val = samples[:args.n_val]
+        print(f"WARNING: reusing the first {args.n_val} training problems as validation")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for name, rows in ((f"{args.out_prefix}_train", train), (f"{args.out_prefix}_val", val)):

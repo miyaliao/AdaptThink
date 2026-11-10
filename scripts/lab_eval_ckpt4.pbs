@@ -1,0 +1,40 @@
+#!/bin/bash
+#PBS -P ds_ccds_wei.lu
+#PBS -q gpu_ded
+#PBS -l select=1:ncpus=16:ngpus=2:mem=128gb
+#PBS -l walltime=08:00:00
+#PBS -N nt_ev
+
+# Evaluate a checkpoint (or the base model) with free / forced modes.
+#
+#   MODE=free   the model decides (first token </think> = it skipped thinking)
+#   MODE=think  "Alright" injected, forces the thinking path
+#   MODE=fast   </think> injected, forces the answer-only path
+#
+# Submit:
+#   qsub -v REPO=$PWD,ENV_ACTIVATE=$HOME/activate_nt.sh,\
+# CKPT=<path>,MODE=free,SAMPLES=4 scripts/lab_eval_ckpt4.pbs
+#
+# The 2-GPU request is deliberate: this queue only schedules jobs matching the
+# 2-GPU template. Only the first GPU is used, via CUDA_VISIBLE_DEVICES.
+
+set -uo pipefail
+
+cd "${REPO:-$HOME/AdaptThink}"
+[ -n "${ENV_ACTIVATE:-}" ] && source "$ENV_ACTIVATE"
+export PYTHONNOUSERSITE=1 VLLM_USE_V1=0 VLLM_ATTENTION_BACKEND=FLASH_ATTN
+export CUDA_VISIBLE_DEVICES=0
+
+echo "Node: $(hostname)"
+CKPT="${CKPT:-checkpoints/sc4001_rl_bal/global_step_300/hf}"
+MODE="${MODE:-free}"
+SAMPLES="${SAMPLES:-1}"
+TAG="${TAG:-}"
+
+python -u scripts/eval_free_choice.py \
+  --model "$CKPT" \
+  --mode "$MODE" \
+  --samples "$SAMPLES" \
+  --max-tokens "${MAX_TOKENS:-4096}" \
+  --out "results/rl_free_choice_${MODE}${TAG}.json"
+echo "EVAL_EXIT=$?"

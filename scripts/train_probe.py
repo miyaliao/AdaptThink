@@ -65,43 +65,58 @@ def load_npz(path):
             "soft": data["soft"].astype(np.float32), "hard": data["hard"].astype(np.float32)}
 
 
-def fit_logistic(X_train, y_train, X_val, y_val, epochs=400, lr=0.05, l2=1e-4, seed=0):
-    """Full-batch logistic regression in torch, early-stopped on validation AUC."""
-    import torch
-    torch.manual_seed(seed)
-    mean, std = X_train.mean(0, keepdims=True), X_train.std(0, keepdims=True) + 1e-6
-    Xtr = torch.tensor((X_train - mean) / std, dtype=torch.float32)
-    Xva = torch.tensor((X_val - mean) / std, dtype=torch.float32)
-    ytr = torch.tensor(y_train, dtype=torch.float32)
-    head = torch.nn.Linear(X_train.shape[1], 1)
-    optimizer = torch.optim.Adam(head.parameters(), lr=lr)
-    loss_fn = torch.nn.BCEWithLogitsLoss()
-    best = {"auc": -1.0, "state": None, "epoch": None}
-    for epoch in range(1, epochs + 1):
-        head.train()
-        optimizer.zero_grad()
-        logits = head(Xtr).squeeze(-1)
-        loss = loss_fn(logits, ytr) + l2 * (head.weight ** 2).sum()
-        loss.backward()
-        optimizer.step()
-        if epoch % 10 == 0 or epoch == epochs:
-            head.eval()
-            with torch.no_grad():
-                val_scores = torch.sigmoid(head(Xva).squeeze(-1)).numpy()
+def fit_logistic(X_train, y_train, X_val, y_val, iters=600, lr=0.05, l2=1e-4):
+    """Full-batch logistic regression in numpy with Adam, early-stopped on val AUC.
+
+    numpy instead of torch: this step is tiny (a few million multiply-adds per
+    iteration) and keeping it dependency-free removes a class of environment bugs.
+    """
+    mean = X_train.mean(0, keepdims=True)
+    std = X_train.std(0, keepdims=True) + 1e-6
+    A = ((X_train - mean) / std).astype(np.float64)
+    B = ((X_val - mean) / std).astype(np.float64)
+    y = y_train.astype(np.float64)
+
+    w = np.zeros(A.shape[1], dtype=np.float64)
+    b = np.zeros(1, dtype=np.float64)
+    mw, vw = np.zeros_like(w), np.zeros_like(w)
+    mb, vb = np.zeros_like(b), np.zeros_like(b)
+    beta1, beta2, eps = 0.9, 0.999, 1e-8
+    best = {"auc": -1.0, "w": None, "b": None, "iter": None}
+
+    for it in range(1, iters + 1):
+        logits = A @ w + b
+        p = 1.0 / (1.0 + np.exp(-logits))
+        err = p - y
+        grad_w = A.T @ err / len(y) + l2 * w
+        grad_b = np.array([err.mean()])
+
+        mw = beta1 * mw + (1 - beta1) * grad_w
+        vw = beta2 * vw + (1 - beta2) * grad_w ** 2
+        mb = beta1 * mb + (1 - beta1) * grad_b
+        vb = beta2 * vb + (1 - beta2) * grad_b ** 2
+        mw_hat, vw_hat = mw / (1 - beta1 ** it), vw / (1 - beta2 ** it)
+        mb_hat, vb_hat = mb / (1 - beta1 ** it), vb / (1 - beta2 ** it)
+        w -= lr * mw_hat / (np.sqrt(vw_hat) + eps)
+        b -= lr * mb_hat / (np.sqrt(vb_hat) + eps)
+
+        if it % 10 == 0 or it == iters:
+            val_scores = 1.0 / (1.0 + np.exp(-(B @ w + b)))
             score = auc(val_scores, y_val)
             if score > best["auc"]:
-                best = {"auc": score, "epoch": epoch,
-                        "state": {k: v.detach().clone() for k, v in head.state_dict().items()}}
-    head.load_state_dict(best["state"])
-    head.eval()
-    return head, mean, std, best["auc"], best["epoch"]
+                best = {"auc": score, "w": w.copy(), "b": b.copy(), "iter": it}
+
+    w = best["w"] if best["w"] is not None else w
+    b = best["b"] if best["b"] is not None else b
+    # fold the standardisation into the weights so predict() is a plain matmul
+    w_scaled = w / std.ravel()
+    b_scaled = b - float((mean.ravel() * w_scaled).sum())
+    return {"w": w_scaled, "b": b_scaled, "auc": best["auc"], "iter": best["iter"]}
 
 
-def predict(head, mean, std, X):
-    import torch
-    with torch.no_grad():
-        tensor = torch.tensor((X - mean) / std, dtype=torch.float32)
-        return torch.sigmoid(head(tensor).squeeze(-1)).numpy()
+def predict(model, X):
+    logits = X.astype(np.float64) @ model["w"] + model["b"]
+    return 1.0 / (1.0 + np.exp(-logits))
 
 
 def main():
@@ -110,7 +125,7 @@ def main():
     parser.add_argument("--val", type=Path, required=True)
     parser.add_argument("--test", type=Path, default=None)
     parser.add_argument("--out-dir", type=Path, default=ROOT / "results")
-    parser.add_argument("--epochs", type=int, default=400)
+    parser.add_argument("--epochs", type=int, default=600, help="optimiser iterations")
     parser.add_argument("--lr", type=float, default=0.05)
     args = parser.parse_args()
 
@@ -119,17 +134,17 @@ def main():
           f"dim={train['X'].shape[1]} train_pos_rate={train['hard'].mean():.3f} "
           f"val_pos_rate={val['hard'].mean():.3f}", flush=True)
 
-    head, mean, std, best_auc, best_epoch = fit_logistic(
-        train["X"], train["soft"], val["X"], val["hard"],
-        epochs=args.epochs, lr=args.lr)
-    print(f"probe: best val AUC={best_auc:.4f} at epoch {best_epoch}", flush=True)
+    model = fit_logistic(train["X"], train["soft"], val["X"], val["hard"],
+                         iters=args.epochs, lr=args.lr)
+    best_auc, best_epoch = model["auc"], model["iter"]
+    print(f"probe: best val AUC={best_auc:.4f} at iter {best_epoch}", flush=True)
 
     report = {"probe": "logistic regression on last-layer hidden state",
               "n_train": len(train["sample_id"]), "n_val": len(val["sample_id"]),
               "dim": int(train["X"].shape[1]),
               "best_val_auc": best_auc, "best_epoch": best_epoch}
     for name, split in (("train", train), ("val", val)):
-        scores = predict(head, mean, std, split["X"])
+        scores = predict(model, split["X"])
         acc = float(((scores >= 0.5) == (split["hard"] > 0.5)).mean())
         report[f"{name}_auc"] = auc(scores, split["hard"])
         report[f"{name}_acc_at_0.5"] = acc
@@ -142,7 +157,7 @@ def main():
 
     if args.test is not None:
         test = load_npz(args.test)
-        scores = predict(head, mean, std, test["X"])
+        scores = predict(model, test["X"])
         report["test_p_nt"] = describe(scores)
         (args.out_dir / "probe_test_p_nt.json").write_text(
             json.dumps({"p_nt": dict(zip(test["sample_id"].tolist(), scores.tolist()))}),
