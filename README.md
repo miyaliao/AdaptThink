@@ -4,288 +4,512 @@
   <img src="assets/adaptthink-cropped.svg" width="95%" alt="AdaptThink research goal: adaptive routing between Thinking and NoThinking under a fixed inference-token budget" />
 </p>
 
+This is a course-project fork of **[AdaptThink: LLM Can Learn When to Think](https://arxiv.org/abs/2505.13417)**, originally developed by [THU-KEG](https://github.com/THU-KEG/AdaptThink).
 
-This is a course-project fork of **[AdaptThink: LLM Can Learn When to Think](https://arxiv.org/abs/2505.13417)** (EMNLP 2025), originally developed by [THU-KEG](https://github.com/THU-KEG/AdaptThink).
+For **NTU SC4001 Project G**, we investigate whether choosing **Thinking** or **NoThinking** before answering a mathematical question improves the accuracy–output-token trade-off:
 
-## Project Goal
+**Maximize accuracy, subject to an average generated-output-token budget.**
 
-For **NTU SC4001 Project G**, we study whether selecting **Thinking** or **NoThinking** adaptively improves mathematical reasoning accuracy under a fixed *average* output-token budget:
+Our main solver is **DeepSeek-R1-Distill-Qwen-1.5B**. The repository contains fixed-mode and random-routing baselines, external-router experiments using ModernBERT or frozen DeepSeek representations, and internal-routing SFT / small-scale RL experiments. External-router replay keeps the answer generator fixed; internal-model training and self-generation are separate experimental settings. This project is **not a claim to reproduce the original paper's full-scale RL training**.
 
-**Maximize accuracy, subject to mean LLM output tokens ≤ B.**
+## Navigation
 
-Our planned comparison uses **DeepSeek-R1-Distill-Qwen-1.5B** with the same evaluation protocol:
+- [Reproduction scope and artifact availability](#reproduction-scope-and-artifact-availability)
+- [1. Environment and dependencies](#1-environment-and-dependencies)
+- [2. Data preparation](#2-data-preparation)
+- [3. Reproduce cached baselines on CPU](#3-reproduce-cached-baselines-on-cpu)
+- [4. Reproduce external-router evaluation and figures](#4-reproduce-external-router-evaluation-and-figures)
+- [5. Training and additional experiments](#5-training-and-additional-experiments)
+- [6. Regenerate the fixed-mode baseline answers](#6-regenerate-the-fixed-mode-baseline-answers)
+- [7. Evaluation conventions](#7-evaluation-conventions)
+- [8. Reproduction records and submission artifacts](#8-reproduction-records-and-submission-artifacts)
+- [Research documentation and attribution](#research-documentation-and-attribution)
 
-- **Baselines:** Always Fast, Always Slow, and offline Random Router (implemented; budget-matched comparison planned).
-- **External Router:** A lightweight predictor chooses the mode; Qwen remains frozen.
-- **Internal Router:** LoRA SFT teaches Qwen to choose its mode (RL is optional).
+## Reproduction scope and artifact availability
 
-The **Random Router baseline is implemented** as an offline replay of the paired baseline grades. External and Internal Routers remain planned. Router overhead will be reported separately from generated LLM tokens; budget thresholds will be chosen on validation data and evaluated on held-out test data.
+There are three different tasks: **recompute results from saved evidence**, **run trained routers**, and **retrain models / regenerate answers**. They do not have the same requirements.
 
-## Shared splits (frozen — do not resample)
+| Task | What is available in Git | Additional requirements |
+| --- | --- | --- |
+| Recompute Random Router results and assemble canonical test labels | Baseline grades, split manifests, data and scripts | CPU environment; no model download |
+| Recreate the three-external-router report and matched-budget figures | Reporting scripts and validation labels | Saved validation and test prediction files listed in Section 4; no GPU once predictions are available |
+| Run the three trained external routers on test questions | Prediction scripts | Base model, trained heads / checkpoint, validation feature cache and reference predictions; GPU forwards, but no answer decoding |
+| Retrain frozen-representation routers | Feature extraction and probe-fitting scripts | Original strict training labels and base model |
+| Retrain every historical ModernBERT / cost-aware configuration | Some training and ablation scripts | Additional server-local trainers or artifacts; see Section 5 |
+| Regenerate fixed-mode answers | Historical two-stage generation and scoring scripts | Base model, inference/scoring environment and GPU |
+| Reproduce internal SFT / RL experiments | Training / evaluation entrypoints and selected result files | Matching training data, generated responses or exported checkpoints, and the experiment-specific environment |
 
-Both routes (external router, internal router) must train and tune on the *same*
-data, otherwise the two Accuracy–Token curves are not comparable. Three frozen
-files, disjoint by construction:
+**Current limitations, checked against `main` on 2026-11-13:** the original strict 3,000-question training JSONL, trained external-router artifacts, raw generation caches, and most `outputs/` / checkpoint directories are not included in the repository. The three-router test predictions and report are also not bundled. A fresh clone therefore supports the cached-baseline workflow, **not every end-to-end experiment without restoring additional files**. The commands below identify these prerequisites rather than silently substituting another dataset or checkpoint.
 
-| File | Rows | Role | sha256 (first 12) |
-| --- | ---: | --- | --- |
-| `data/splits/sft_train_3000_seed42.json` | 3,000 | **training** (DeepScaleR, stratified) | `9c71b21f3272` |
-| `data/splits/adaptthink_val_seed142.json` | 450 | **validation** (GSM8K 300 + MATH-500 150) | `36883adfe2d4` |
-| `data/splits/adaptthink_original_baseline_seed42.json` | 485 | **test** (GSM8K 330 + MATH-500 125 + AIME 2024 30x16) | `831f35187368` |
+The instructions were checked against repository scripts and recorded experiment documentation. This README update does **not** constitute a fresh environment validation, GPU run, or independent replication of the reported numbers.
 
-Rules:
+## 1. Environment and dependencies
 
-1. Never resample and never hand-edit these files. Regenerating changes the hash
-   and silently invalidates every result produced against the old one.
-2. Training data is never used to pick thresholds or checkpoints; that is the
-   validation split's only job. Test numbers are reported once, at the end.
-3. Both routes consume the same `sample_id`s and the same labels. Only the model
-   and the feature representation differ.
-4. Verify a copy with `shasum -a 256 data/splits/sft_train_3000_seed42.json`.
+### 1.1 Checkout and CPU environment
 
-The training manifest removes exact duplicates (3) and *near*-duplicates (27 at
-character 8-gram similarity >= 0.80) against all 935 held-out questions. The
-near-duplicate layer is not cosmetic: it recovered a genuine duplicate that exact
-text matching missed — `deepscaler:6417` and `math:489` are the same problem with
-the same answer 15, differing only in whether a comma sits inside `$...$`.
-
-```bash
-python scripts/make_val_split.py --force                 # regenerate validation (8 KB)
-python scripts/make_sft_manifest.py --n-total 3000 --pilot 600   # regenerate manifest (~76 s)
-python scripts/check_split_quality.py                    # must print PASS (worst 0.667)
-```
-
-`data/splits/sft_train_3000_seed42.json` holds, per problem: `sample_id`
-(traceable back to a `deepscaler.json` row), `problem`, `answer`, `acc_thinking`
-(the released K>=16 reference accuracy), `bucket`, `order_index` and the fixed
-`nothinking_seeds` used to sample it. Labels (`acc_nothinking`, `label`, `gain`)
-are joined on later by `scripts/build_router_labels.py` and stored separately in
-`data/sft/labels_3000.jsonl`; labels never change which problems are in the split.
-
-## Router labels: measured, not inferred (2026-10-31)
-
-Both routes need one label per training problem: should this problem skip thinking?
-We **measured** it instead of assuming it, because the obvious shortcut fails.
-
-**The shortcut does not work.** The cheap rule "Thinking accuracy >= 0.875, therefore
-the problem is easy, therefore NoThinking is fine" agrees with the measured labels
-only **53.4%** of the time and would mislabel **1,397 of 3,000** problems (precision
-39%, recall 23%). Even where Thinking solves a problem 16/16 times, NoThinking still
-loses **28 accuracy points** (98.3% -> 70.3%):
-
-| bucket (Thinking accuracy) | n | p(Thinking) | p(NoThinking) | NoThinking worse | NoThinking better | tie | tok Thinking | tok NoThinking |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| never (0.0) | 600 | 0.000 | 0.064 | 0% | 15% | 85% | 11,282 | 3,046 |
-| rare (0, 0.25] | 600 | 0.140 | 0.096 | 74% | 22% | 4% | 11,663 | 4,108 |
-| sometimes (0.25, 0.5] | 600 | 0.403 | 0.180 | 81% | 17% | 3% | 10,425 | 3,669 |
-| usually (0.5, 0.875] | 600 | 0.740 | 0.357 | 84% | 14% | 2% | 7,403 | 2,513 |
-| always (0.875, 1] | 600 | 0.983 | 0.703 | 56% | 6% | 38% | 3,462 | 989 |
-
-**How a label is produced.** Per problem we join two measured success rates: the
-released Thinking rate (K>=16, `data/train/ref_results/`) and our own NoThinking rate
-(K=4, 16,384-token cap, generated on GAAS H200). Both are scored by the repository's
-own `src/adapt_think_rm.py`. Then:
-
-```
-gain            = p_nothinking - p_thinking
-label           = 1 if gain >= 0                 (ties favour the cheaper mode)
-label_margin    = 1 if gain >= -0.125
-label_soft      = sigmoid(gain / 0.25)
-suggested_weight= 1.0 on the boundary buckets, 0.5 elsewhere
-```
-
-Distribution over the 3,000 problems: **1,236 NoThinking / 1,764 Thinking**, 795 ties.
-23.7% of the *reference* Thinking generations hit the 16,384 cap, so `p_thinking` is a
-lower bound; the evaluation uses the same cap, so label and evaluation share a protocol.
-
-**Two label files: strict and repaired.** 23.4% of the generated NoThinking answers
-were rejected by the scorer for *formatting* rather than for being wrong (1,500 opened
-a second `<think>` block, 757 closed thinking twice, 552 answered without a
-`\boxed{}`). Both versions are kept, because the difference is itself a result:
-
-| Directory | Rule | p(NoThinking) | NoThinking / Thinking labels |
-| --- | --- | ---: | --- |
-| `results/router_labels_1p5b/` | strict: any format violation scores 0 | 0.280 | 1,236 / 1,764 |
-| `results/router_labels_1p5b_repaired/` | repair the scorable part, then score | **0.343** | 1,458 / 1,542 |
-
-Repair (`scripts/repair_nothinking.py`) keeps everything after the last `</think>`,
-restores a missing boxed answer from the model's own text, and never invents an
-answer. It rescued **754** correct answers, which moves the measured
-"Thinking minus NoThinking" gap from **17.3 to 11.0 points**: about a third of the
-apparent gap was a measurement artefact. Training uses the repaired file; the strict
-file documents what the unmodified protocol would have reported.
-
-**Choosing lambda (the token price).** The group's objective is `max accuracy s.t. mean
-output tokens <= B`, so the per-problem optimum is not "route NoThinking when it is at
-least as accurate" (that is the B = infinity case) but
-`(p_nothinking - p_thinking) + lambda * (t_thinking - t_nothinking) >= 0`.
-lambda is not guessed: it is read off the measured oracle frontier, obtained by ranking
-the 3,000 problems with their measured values (this is the **ceiling** for any router):
-
-| lambda (acc per 1k tokens) | NoThinking share | mean tokens | mean accuracy |
-| ---: | ---: | ---: | ---: |
-| 0 | 41.2% | 6,073 | **49.2%** |
-| 0.010 | 45.4% | 5,535 | 48.9% |
-| **0.020** | **51.7%** | **4,993** | **48.0%** |
-| 0.050 | 65.1% | 3,978 | 44.7% |
-| 0.200 | 86.4% | 2,955 | 35.1% |
-| always NoThinking | 100% | 2,865 | 28.0% |
-| always Thinking | 0% | 8,847 | 45.3% |
-
-The frontier dominates every fixed mode on both axes at lambda <= 0.02, and the biggest
-gap to a budget-matched random router is around 4,000-6,000 tokens per problem. We
-train with **lambda_ref = 0.02** (near the knee, ~52% NoThinking, balanced labels) and
-keep **lambda = 0** as an ablation. lambda is a *training* hyperparameter only: the
-deployed knob is a threshold on `p_nt` swept on the validation split, which is what
-actually traces the budget curve.
-
-**Split used for training.** All 3,000 labelled problems train the router
-(no in-train hold-out). Validation is the frozen 450-question split
-(`data/splits/adaptthink_val_seed142.json`), whose Thinking and NoThinking
-answers are generated by `scripts/lab_val_pipeline.pbs`; it shares no problem with
-the training set and is the only place a threshold is chosen. Test numbers come
-from the canonical 485-question split, reported once.
-
-**Reproduce.**
+Commands below use **Bash on Linux** and run from the repository root. When using the submission ZIP, extract it and enter its root directory instead of cloning.
 
 ```bash
-# 12,000 NoThinking answers on 3,000 problems (GAAS H200, ~30 min on 2 GPUs)
-qsub -v REPO=$PWD,STAGE=all,MAX_TOKENS=16384,ENV_ACTIVATE=$HOME/activate_nt.sh \
-     scripts/lab_nothinking_train.pbs
-# labels + calibration report (few minutes)
-qsub -v REPO=$PWD,ENV_ACTIVATE=$HOME/activate_nt.sh,\
-INPUT_DIR=outputs/nothinking_train_seed42,SCOPE=all scripts/lab_score_labels.pbs
-# LoRA on the first-token decision (~2 min)
-qsub -v REPO=$PWD,ENV_ACTIVATE=$HOME/activate_nt.sh scripts/lab_train_lora.pbs
+git clone https://github.com/miyaliao/AdaptThink.git
+cd AdaptThink
+
+python3.10 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install numpy matplotlib
+
+export PYTHONNOUSERSITE=1
+export TOKENIZERS_PARALLELISM=false
 ```
 
-Committed products:
+`numpy` and `matplotlib` are sufficient for the CPU reporting / synthetic-test commands in Section 3. They are not a complete training environment. Their exact versions should be recorded with each reproduction run.
 
-| File | What it is |
+### 1.2 Recorded GPU environment
+
+The project records the following core versions for its 1.5B inference / routing work. See [NTU inference environment](docs/NTU_HPC_ENV.md) and the [historical environment notes](https://github.com/miyaliao/AdaptThink/blob/4efc5e870c0b54908af347ae4379b8ae38d284da/README.md).
+
+| Component | Recorded version / role |
 | --- | --- |
-| `results/router_labels_1p5b/all_3000_labels.jsonl` | 3,000 training labels, one JSON object per problem |
-| `results/router_labels_1p5b/all_3000_summary.json` | per-bucket stats and proxy calibration |
-| `results/val_450_labels.jsonl` | the 450-question validation labels used to pick thresholds |
-| `results/val_450_summary.json` | validation accuracy/token/length summary |
+| Python | 3.10 |
+| PyTorch | 2.6.0+cu124 |
+| Transformers | 4.51.2 |
+| vLLM | 0.8.5, required for answer generation, not cached-result replay |
+| Hugging Face Hub | 0.30.2 in the recorded H200 environment |
+| Accelerate | 1.3.0 in the recorded H200 environment |
+| PEFT | 0.14.0 for LoRA experiments |
+| XFormers | 0.0.29.post2 in the recorded V100 inference environment |
+| Math-Verify / SymPy | 0.9.0 / 1.13.1 in the later scoring environment notes |
+| Other packages | `numpy`, `matplotlib`, `pylatexenc`; training-specific scripts may also require `datasets`, `pandas` and `scikit-learn` |
 
-Label fields: `sample_id`, `problem`, `answer`, `bucket`, `p_thinking`,
-`p_nothinking`, `gain_thinking` (= p_thinking - p_nothinking), `mean_tokens_thinking`,
-`mean_tokens_nothinking`, `truncation_*`, `label`, `label_margin`, `label_soft`,
-`suggested_weight`, `predictions`. **lambda is not stored in the file** - it is a
-training hyperparameter applied on top of these fields.
-
-The raw generation shards stay out of Git (~50 MB, `outputs/`); they are
-reproducible from the commands above and their hashes belong in
-`results/router_labels_1p5b/checksums.sha256`. The frozen manifest hash
-`9c71b21f3272` pins which problems were used.
-
-## Environment notes (GAAS H200, validated 2026-11-01)
-
-Versions that work together: Python 3.10, torch **2.6.0+cu124**, transformers
-**4.51.2**, vllm **0.8.5**, `huggingface_hub` **0.30.2**, peft **0.14.0**,
-`accelerate` **1.3.0**, math-verify 0.9.0, sympy 1.13.1, pylatexenc 2.11.
-
-Four traps that each cost a job, in the order they bite:
-
-1. **`huggingface_hub` must stay below 1.0.** `pip install -U huggingface_hub`
-   (needed once to download the model) installs 2.x and breaks `transformers` with
-   `huggingface-hub>=0.30.0,<1.0 is required`. Pin 0.30.2 afterwards.
-2. **`CUDA_VISIBLE_DEVICES` is a GPU UUID on this cluster** (`GPU-a6db552a-...`) and
-   vLLM 0.8.5 calls `int()` on it in two places. `gen_val_outputs.py` patches
-   `vllm.platforms.cuda.device_id_to_physical_device_id` before creating the engine,
-   and the PBS scripts export `VLLM_ATTENTION_BACKEND=FLASH_ATTN`, which skips the
-   capability query. Do both; either alone is fragile.
-3. **`peft` needs `accelerate`**, and both must be installed with `--no-deps` so pip
-   does not quietly upgrade torch/transformers:
-   `python -m pip install --no-cache-dir --no-deps "peft==0.14.0" "accelerate==1.3.0"`.
-4. **PBS writes job stdout only after the job ends** on this cluster, so `tail -f
-   nt_*.o<jobid>` fails while the job runs. Watch progress with
-   `wc -l outputs/.../*.jsonl` instead.
-
-## Current Work: AdaptThink Baseline Evaluation
-
-We evaluate **DeepSeek-R1-Distill-Qwen-1.5B** in forced NoThinking and regular Thinking modes using the original mathematical scorer. This is a **subset/full-AIME inference baseline**, not a reproduction of AdaptThink's RL training.
-
-| Dataset | Fixed questions | Generations per mode |
-| --- | ---: | ---: |
-| GSM8K | 330 / 1,319 (25%) | 330 |
-| MATH-500 | 125 / 500 (25%) | 125 |
-| AIME 2024 | **30 / 30 (all)** | 480 (16 per question) |
-| **Total** | **485** | **935** |
-
-Both modes together require **1,870 generations**. The canonical question indices, dataset hashes, and sampling seeds are recorded in [`data/splits/adaptthink_original_baseline_seed42.json`](data/splits/adaptthink_original_baseline_seed42.json) (base seed 42). Both modes use the same questions; mathematical scoring uses [`src/adapt_think_rm.py`](src/adapt_think_rm.py).
-
-**Important:** `eval_baseline_subset.py` contains the historical **8-question AIME** run. `extend_aime_full.py` adds the other 22 questions and combines all **30**; the canonical split above, not the historical 8-question manifest, defines future evaluation.
-
-## Baseline Results
-
-| Dataset | NoThinking Accuracy | Thinking Accuracy | Mean Output Tokens (NoThinking / Thinking) |
-| --- | ---: | ---: | ---: |
-| GSM8K | 66.06% | 77.88% | 269 / 924 |
-| MATH-500 | 67.20% | 84.80% | 856 / 3,964 |
-| AIME 2024 | 10.83% | 25.00% | 6,013 / 12,489 |
-
-Results use the original **1.5B model weights** (no SFT/RL). AIME accuracy is averaged over **30 questions × 16 generations per mode**, **not pass@16**. At the 16,384-token limit, AIME truncation rates were **17.1% (NoThinking)** and **47.7% (Thinking)**.
-
-## Quick Start (NTU TC1)
-
-See [`docs/NTU_HPC_ENV.md`](docs/NTU_HPC_ENV.md) for Python/vLLM setup, GPU settings, Slurm requirements, and detailed commands. The model weights must be available locally at `model/DeepSeek-R1-Distill-Qwen-1.5B` (not stored in Git). Slurm scripts contain environment-specific paths.
+For a **new** environment, the following is a bootstrap based on those recorded core versions, **not a complete, freshly tested lockfile**. Preserve a working experiment environment rather than reinstalling it unnecessarily.
 
 ```bash
-source .venv/bin/activate
+# CUDA 12.4 PyTorch build used in the recorded environment.
+python -m pip install 'torch==2.6.0' \
+  --index-url https://download.pytorch.org/whl/cu124
+
+# Transformers-based feature extraction, router training and LoRA support.
+python -m pip install \
+  'transformers==4.51.2' 'huggingface-hub==0.30.2' \
+  'accelerate==1.3.0' 'peft==0.14.0' \
+  datasets pandas scikit-learn
+
+# Additional dependencies only when generating / grading new answers.
+python -m pip install \
+  'vllm==0.8.5' 'math-verify==0.9.0' 'sympy==1.13.1' pylatexenc
+
+python -m pip check
+python -c "import torch, transformers; print(torch.__version__, transformers.__version__); print('CUDA available:', torch.cuda.is_available())"
+```
+
+**Do not treat [`requirements.txt`](requirements.txt) as the experiment lockfile.** It contains the broader development / upstream RL stack, includes unpinned dependencies, and specifies `vllm==0.8.2`, whereas the recorded baseline inference environment used `0.8.5`. The lightweight reproduction paths here do not require installing the entire RL stack. RL additionally depends on its launcher-specific `verl` / Ray environment; the commands above do not claim to provision that environment.
+
+### 1.3 Hardware and scheduler settings
+
+The baseline inference configuration was recorded on a **single V100 32 GB**; other generation and internal-model experiments used the lab **H200** environment. Preserve each experiment's recorded precision and backend. Do not merge FP16 and BF16 generations into one claimed reproduction.
+
+For the recorded **V100 inference** path:
+
+```bash
+export VLLM_USE_V1=0
+export VLLM_ATTENTION_BACKEND=XFORMERS
+export TOKENIZERS_PARALLELISM=false
+```
+
+That path uses FP16 and disables chunked prefill. The H200 PBS launchers instead use their own BF16 / attention settings; do not copy them into V100 jobs. Generated-token cost does not include router forward-pass time or GPU memory.
+
+Run GPU commands **inside an allocated compute job**, not on the HPC login node. The provided `.sbatch` / `.pbs` files contain site-specific paths, accounts and resources. In particular, several NTU launchers assume `/tc1home/UG/n2602710a/AdaptThink`. Adapt those settings to the executing machine before submission; the direct Python commands below avoid that hard-coded working-directory assumption.
+
+### 1.4 Base model
+
+GPU workflows expect a local model directory:
+
+```text
+model/DeepSeek-R1-Distill-Qwen-1.5B/
+```
+
+Restore the model and tokenizer used for the original experiment when reproducing saved heads. To obtain a model snapshot for a new run:
+
+```bash
+python - <<'PY'
+from huggingface_hub import snapshot_download
+snapshot_download(
+    repo_id="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+    local_dir="model/DeepSeek-R1-Distill-Qwen-1.5B",
+)
+PY
+```
+
+Record the resolved model revision and file hashes. The download above does not pin a historical revision and is not proof of byte-identical model/tokenizer provenance. The evaluation code checks prompt templates and historical validation predictions to detect mismatches. ModernBERT feature-extraction / training scripts use `answerdotai/ModernBERT-base`; evaluating the trained Utility-Hard router requires the **fine-tuned checkpoint**, not a fresh base ModernBERT model.
+
+## 2. Data preparation
+
+### 2.1 Use the frozen data and splits
+
+Dataset JSON files and split manifests are already in the repository. **Do not resample the benchmark or regenerate the manifests to reproduce an existing result.**
+
+| Split | Composition | Manifest |
+| --- | --- | --- |
+| Training manifest | 3,000 stratified DeepScaleR questions | `data/splits/sft_train_3000_seed42.json` |
+| Validation | 300 GSM8K + 150 MATH-500 questions | `data/splits/adaptthink_val_seed142.json` |
+| Canonical test | 330 GSM8K + 125 MATH-500 + all 30 AIME 2024 questions | `data/splits/adaptthink_original_baseline_seed42.json` |
+
+Source files are under `data/test/` and `data/train/`. The released Thinking reference results are under `data/train/ref_results/`. On the canonical test, AIME has **16 generations per question per mode**, while GSM8K and MATH-500 have one. Thus there are **485 unique test questions, 935 generations per mode, and 1,870 across both modes**.
+
+```bash
 python scripts/verify_baseline_split.py
-python scripts/eval_baseline_subset.py --action preflight
-sbatch scripts/ntu_baseline_subset.sbatch
-
-# After the historical subset run finishes:
-python scripts/extend_aime_full.py --action preflight
-sbatch scripts/ntu_aime_full.sbatch
+python scripts/check_split_quality.py
 ```
 
-Results are saved locally (Git-ignored) under `outputs/baseline_subset_25pct_seed42/` and `outputs/baseline_aime_remaining_seed42/`. The combined AIME-30 summary is `outputs/baseline_aime_remaining_seed42/summary_combined.json`.
+The second command audits the split manifests. It does not establish that every historical label variant has the same provenance or decontamination properties. The external-router strict-data loader separately checks its original files and reports normalized train/validation text overlaps without removing rows.
 
+### 2.2 Keep label variants separate
 
-## Offline Random Router baseline (CPU only)
+| File / directory | Purpose and availability |
+| --- | --- |
+| `results/val_450_labels.jsonl` | Committed strict validation outcomes for external-router replay |
+| `results/router_labels_1p5b/all_3000_labels.jsonl` | **Original strict training labels; not committed.** Restore the exact experiment file. The directory currently contains summary / checksum information. |
+| `results/router_labels_1p5b_repaired/all_3000_labels.jsonl` | Committed repaired variant; default input to the current internal SFT script |
+| `results/router_labels_1p5b_compliant/all_3000_labels.jsonl` | A separate committed variant, not an interchangeable strict-label replacement |
+| `results/baseline_1p5b/{thinking,nothinking}_grades.json` | Committed paired baseline grades used for test replay |
 
-The original model is **not** rerun. This script reads the paired grades already
-tracked under `results/baseline_1p5b/` and checks their IDs against the canonical
-split. It evaluates NoThinking probabilities **0.10, 0.25, 0.50** plus both
-always-on endpoints. AIME has **one route per question**, not one route per
-generation: all 16 draws of each question use the same selected mode.
+External-router historical experiments use empirical success rates from Thinking reference samples (`K >= 16`) and four NoThinking samples per training question. Classification uses `1[p_N >= p_T]`, including ties in NoThinking. Utility-aware targets use
+
+```text
+DeltaU_N = (p_N - p_T) + lambda * (t_T - t_N) / 1000
+```
+
+where `p` is empirical correctness and `t` is mean generated-output-token count. Hard targets threshold `DeltaU_N`; soft targets apply a sigmoid with temperature; direct utility regression predicts the continuous gap. The target definition and label variant must match the experiment being reproduced.
+
+After restoring the **original strict** training JSONL, verify it before training:
 
 ```bash
-cd ~/AdaptThink
-git pull --ff-only origin main
-source .venv/bin/activate
-# Only if matplotlib is not already installed (required for PNG only):
-python -m pip install matplotlib
-python scripts/eval_random_router.py
+python scripts/route_e_frozen.py check-data
 ```
 
-By default, each probability is replayed across 100 deterministic router seeds
-(starting at 42). The script reports per-dataset mean Accuracy, mean output
-tokens, fraction routed NoThinking, fraction truncated, and relative savings,
-and writes:
+The loader requires these SHA256 values:
 
-- `results/random_router_1p5b/summary.json` — analytical random-mixture expectations,
-  100-seed simulation means, standard deviations, and seed percentiles;
-- `results/random_router_1p5b/per_seed.json` — all 900 dataset × probability × seed outcomes;
-- `results/random_router_1p5b/accuracy_tokens.png` — separate per-dataset
-  Accuracy–Token panels with the analytical random baseline line.
+```text
+results/router_labels_1p5b/all_3000_labels.jsonl
+761dcbb6338de1a3c71def382089c83e8024e0e55af6334dd974963e8d7e0f2c
 
-To compute JSON outputs without matplotlib, use
-`python scripts/eval_random_router.py --skip-plot`.
+results/val_450_labels.jsonl
+4c1e984d3744cc089dcc963a30af0ef3d1ed9808c4bfd245a97e48787d501461
+```
 
-**Interpretation:** the 2.5%/97.5% quantiles and error bars represent variation
-across **router random seeds**, not confidence intervals for test-set sampling
-or AIME question difficulty. Use the analytical expectation line when comparing
-future learned routers at an equal token budget. The Random Router never uses
-gold answers or the graded outputs to decide its route; those cached values are
-used only to evaluate the chosen mode.
+Do **not** bypass a hash failure or rename a repaired/compliant file to the strict path.
 
-## Original Work & Attribution
+For reconstruction from the **original archived raw NoThinking generation shards and metadata**, the scoring entrypoint is:
 
-- **Upstream code and full training instructions:** [THU-KEG/AdaptThink](https://github.com/THU-KEG/AdaptThink)
-- **Paper:** [AdaptThink: LLM Can Learn When to Think](https://arxiv.org/abs/2505.13417)
-- **Released models:** [THU-KEG Hugging Face collection](https://huggingface.co/collections/THU-KEG/adaptthink-682a1059aa9f5102c4fa0470)
-- **License:** [MIT](LICENSE). Original copyright and license notices are retained.
+```bash
+python scripts/build_router_labels.py \
+  --input-dir outputs/nothinking_train_seed42 \
+  --output-dir results/router_labels_1p5b \
+  --workers 8 --all
+```
+
+This requires the missing raw generation cache and the scoring dependencies; it is not a fresh-clone shortcut. Check the resulting strict-file hash. Generating new samples, changing the scorer, or using another precision/backend is a new data-production run, not a guaranteed reconstruction of the historical file. See [`lab_score_labels.pbs`](scripts/lab_score_labels.pbs) and [`gen_nothinking_train.py`](scripts/gen_nothinking_train.py) for the generation/scoring workflow.
+
+### 2.3 Assemble test replay labels without generating answers
+
+```bash
+python scripts/build_test_labels.py
+```
+
+Expected outputs:
+
+```text
+results/test_485_labels.jsonl
+results/test_485_summary.json
+```
+
+This reshapes the **committed** paired grades into question-level outcomes and averages AIME's 16 draws within each question. It does not run the LLM or re-grade responses. Test outcomes are evaluation evidence, never router inputs or training targets.
+
+## 3. Reproduce cached baselines on CPU
+
+After Section 1.1, run:
+
+```bash
+python scripts/verify_baseline_split.py
+python scripts/build_test_labels.py
+python scripts/eval_random_router.py
+
+# Synthetic checks of the reporting / score-replay implementation.
+python scripts/adaptthink_test_predict.py --stage self-test
+python scripts/adaptthink_test_report.py --self-test
+python scripts/plot_test_matched_budget.py --self-test
+```
+
+For Random Router without a plot, use `python scripts/eval_random_router.py --skip-plot` instead. These commands do not require downloaded model weights, trained router checkpoints or new LLM generation. Run in a clean working copy or preserve existing result files before rerunning scripts that write to their default output paths.
+
+Random Router defaults evaluate NoThinking probabilities `0.10`, `0.25` and `0.50`, with 100 router seeds starting at 42, plus the fixed-mode endpoints. Each AIME question receives one routing decision shared by its 16 draws. Outputs are:
+
+```text
+results/random_router_1p5b/summary.json
+results/random_router_1p5b/per_seed.json
+results/random_router_1p5b/accuracy_tokens.png
+```
+
+The fixed-mode reference results are already recorded in [`results/baseline_1p5b/summary.json`](results/baseline_1p5b/summary.json):
+
+| Dataset | NoThinking accuracy | Thinking accuracy | NoThinking tokens | Thinking tokens |
+| --- | ---: | ---: | ---: | ---: |
+| GSM8K, 330 questions | 66.06% | 77.88% | 269 | 924 |
+| MATH-500, 125 questions | 67.20% | 84.80% | 856 | 3,964 |
+| AIME 2024, 30 questions × 16 draws | 10.83% | 25.00% | 6,013 | 12,489 |
+
+Tokens are mean generated-output tokens, rounded here. Cached replay can reproduce computations on this fixed evidence; it does **not** independently reproduce model generation. Random-router seed variability is not a confidence interval over new test questions.
+
+## 4. Reproduce external-router evaluation and figures
+
+The implemented three-router workflow is documented in [`docs/README_three_router_test.md`](docs/README_three_router_test.md). It compares:
+
+| Representative | Representation / routing score |
+| --- | --- |
+| ModernBERT + Utility-Hard | Full-fine-tuned ModernBERT; NoThinking preference probability |
+| Frozen DeepSeek P1 + Classification | Assistant-prefix final hidden state; logistic NoThinking score |
+| Frozen DeepSeek P1 + Cost-only | The same P1 representation; Ridge-predicted Thinking-minus-NoThinking token cost |
+
+**Configuration identity matters:** this test runner's archived Utility-Hard representative is **lambda = 0.02**. The later utility sweep selected a different ModernBERT Hard candidate, **lambda = 0.01**, on validation. They are different experimental configurations. Do not silently substitute the sweep winner into the existing three-router comparison. Freeze and document any new comparison separately.
+
+### 4.1 Restore the required artifacts
+
+For GPU prediction, restore the following paths from the corresponding experiment archive, in addition to the base model:
+
+```text
+outputs/external_modernbert/utility_ablation/utility_hard_lam0.02/
+  best_model/
+  validation_predictions.jsonl
+
+outputs/route_e/prompt_ablation/assistant/full/
+  linear_probe.npz
+  val.npz
+  validation_p_nt.json
+
+outputs/route_e/token_aware/full/
+  ridge_heads.npz
+  validation_predictions.json
+```
+
+The checkpoint directory must contain the model/config/tokenizer files required by its loader. Use the actual saved best checkpoint if its server-side directory differs. These paths are **not downloadable artifacts supplied by this README**; they must be included in the submission package or provided through a separately documented artifact archive.
+
+### 4.2 Verify artifacts and predict routing scores
+
+```bash
+python scripts/verify_baseline_split.py
+python scripts/build_test_labels.py
+python scripts/adaptthink_test_predict.py --stage self-test
+python scripts/adaptthink_test_report.py --self-test
+python scripts/adaptthink_test_predict.py --stage verify
+```
+
+The verification stage checks that the restored P1 / cost heads reproduce the stored validation scores. GPU prediction additionally checks representation/checkpoint consistency. A mismatch is a stop condition, not a reason to relax the tolerance until the test runs.
+
+Inside an allocated GPU job:
+
+```bash
+UTILITY_MODEL=outputs/external_modernbert/utility_ablation/utility_hard_lam0.02/best_model
+
+python scripts/adaptthink_test_predict.py --stage deepseek
+python scripts/adaptthink_test_predict.py \
+  --stage modernbert --utility-model "$UTILITY_MODEL"
+```
+
+On the original NTU setup, the equivalent scheduler entrypoint is:
+
+```bash
+sbatch --export=ALL,UTILITY_MODEL=outputs/external_modernbert/utility_ablation/utility_hard_lam0.02/best_model \
+  scripts/ntu_three_router_test.sbatch
+```
+
+That wrapper also runs verification and the standard report. Adapt its site-specific working directory before using another account. Predictions require model forward passes but **do not decode new LLM answers**. The principal outputs are:
+
+```text
+outputs/test_485/deepseek_p1_features.npz
+outputs/test_485/p1_predictions.json
+outputs/test_485/cost_predictions.json
+outputs/test_485/utility_predictions.jsonl
+```
+
+### 4.3 Recreate the report, curves and paper-style tables
+
+With the three test prediction files above, the three corresponding validation prediction files, and the label files restored, this stage is CPU-only:
+
+```bash
+python scripts/adaptthink_test_report.py --main-budget 1300
+python scripts/plot_test_matched_budget.py --budget 1300
+```
+
+Outputs are written under `results/test_485_three_routers/`, including:
+
+| Output | Purpose |
+| --- | --- |
+| `heldout_test_report.md`, `test_per_dataset_table.csv` | Standard report and per-dataset comparison |
+| `test_threshold_overlay.png/.svg` | Descriptive test threshold-sweep curves |
+| `test_validation_budget_transfer.png/.svg`, `validation_budget_transfer.csv` | Validation-calibrated thresholds applied unchanged on test |
+| `nauc_ac_test.csv`, `provenance.json` | Curve metric and artifact / protocol provenance |
+| `matched_test_budget_curve.csv` | Accuracy at matched measured test-token budgets |
+| `thinkswitcher_style_val_B1300.*` | Table using validation-selected operating points |
+| `thinkswitcher_style_testmatched_B1300.*` | Descriptive table using test-cost matching |
+| `matched_budget_B1300_policy_audit.json` | Records the two table policies and their distinction |
+
+The table files include Markdown, CSV, LaTeX and rendered figures. The default supplementary budget grid is 900, 1,100, 1,300, 1,500, 1,700, 1,900 and 2,100 tokens.
+
+**Do not confuse the two comparisons.** A threshold selected for a validation target of 1,300 tokens can produce a different actual cost on test; this is not a guaranteed hard deployment budget. Matching or interpolating at 1,300 **measured test tokens** is a useful descriptive comparison, but it is not a threshold chosen without test outcomes. Keep the corresponding figure/table labels explicit.
+
+## 5. Training and additional experiments
+
+These commands are for rebuilding models or investigating ablations, not prerequisites for CPU replay when the exact saved predictions are available. A retraining run should save its own provenance and must not be assumed to reproduce an archived checkpoint byte-for-byte.
+
+### 5.1 Frozen DeepSeek representation and P1 classification
+
+Prerequisites: original strict 3,000/450 labels, the local DeepSeek model and the GPU feature-extraction environment. Run the P0 reference before the P1 prefix ablation, as in the provided launchers:
+
+```bash
+python scripts/route_e_frozen.py self-test
+python scripts/route_e_frozen.py check-data
+python scripts/route_e_prompt_ablation.py inspect-template
+
+# P0: assistant + <think> representation.
+python scripts/route_e_frozen.py extract --encoder deepseek
+python scripts/route_e_frozen.py fit --encoder deepseek
+
+# P1: assistant prefix without the <think> suffix.
+python scripts/route_e_prompt_ablation.py extract --prompt-mode assistant
+python scripts/route_e_prompt_ablation.py fit --prompt-mode assistant
+```
+
+For a small pipeline check, use `--smoke` consistently on the corresponding `extract` and `fit` commands. Smoke runs use 32 training and 24 validation examples; **they are not the reported full experiment**. Full P1 artifacts go to `outputs/route_e/prompt_ablation/assistant/full/`, with validation reports under `results/route_e/prompt_ablation/`.
+
+The frozen ModernBERT control uses `route_e_frozen.py extract/fit --encoder modernbert`. The P2 question-only ablation uses `route_e_prompt_ablation.py extract/fit --prompt-mode user_only`. Prefix choice is part of **representation extraction**, not a replacement definition of the solver's Thinking/NoThinking generation modes.
+
+### 5.2 Utility-objective ablations and availability boundaries
+
+See [Route A objectives and results](docs/ROUTE_A_PLAN.md) and [Route E research](docs/ROUTE_E_RESEARCH.md) for the original five quality objectives, representation ablations, cost-aware scores and utility targets. Compact validation sweep data are committed under [`results/route_a/utility_objective/`](results/route_a/utility_objective/).
+
+For direct utility regression on already extracted frozen P1 features:
+
+```bash
+python scripts/utility_original_ablation.py self-test
+python scripts/utility_original_ablation.py train --encoder p1
+python scripts/utility_original_ablation.py evaluate --encoder p1
+python scripts/compare_utility_objectives.py --encoder p1
+```
+
+The comparison command also needs the previous objective results described by the experiment documentation. New direct-regression outputs are kept separately under `outputs/route_e/p1_utility_original/` and `results/route_a/utility_original/p1/`.
+
+Two important gaps prevent presenting every historical model as a one-command fresh-clone training run:
+
+- The historical ModernBERT Utility-Hard/Soft sweep depends on server-local `scripts/train_modernbert_utility.py`, which is not currently in `main`. Restore that exact trainer and configuration or use the archived trained checkpoint; the sweep wrapper alone is insufficient.
+- The original P1 cost-only training implementation was recorded on `feature/route-e-token-aware-20261103`, not as a standalone trainer in `main`. The test runner can apply and verify the saved `ridge_heads.npz`, but that does not supply the missing training workflow.
+
+Do not describe the direct-Utility regression runner as reproducing the Utility-Hard classifier; their targets and losses differ.
+
+### 5.3 Internal SFT and RL are separate workflows
+
+The current internal SFT entrypoint is **[`scripts/train_router_sft.py`](scripts/train_router_sft.py)**. Some historical notes refer to an older `train_decision_lora.py` name; use the actual checked-in script. It supports decision supervision plus NoThinking-answer supervision and a decision-only loss setting.
+
+An explicit invocation of the current default SFT configuration, using the external 450-question validation file rather than its fallback split, is:
+
+```bash
+python scripts/train_router_sft.py \
+  --model model/DeepSeek-R1-Distill-Qwen-1.5B \
+  --labels results/router_labels_1p5b_repaired/all_3000_labels.jsonl \
+  --nothinking-dir outputs/nothinking_train_repaired \
+  --val-labels results/val_450_labels.jsonl \
+  --lam 0.02 --temperature 0.25 --response-weight 1.0 \
+  --epochs 2 --batch-size 4 --lr 1e-4 --seed 42 \
+  --output-dir outputs/lora_router_sft
+```
+
+This requires the repaired **response cache**, not just repaired labels. It produces an adapter and `train_report.json`. Setting `--response-weight 0` changes the loss to decision-only, but the current script still loads the response directory. This invocation documents current defaults; it is not asserted to be the configuration of every historical internal-router result. The script uses BF16 when supported and otherwise FP32, so do not assume it uses the V100 baseline's FP16 inference settings.
+
+Small-scale RL / checkpoint utilities are [`run_rl_small.py`](scripts/run_rl_small.py), [`lab_rl_small.pbs`](scripts/lab_rl_small.pbs), [`merge_fsdp_ckpt.py`](scripts/merge_fsdp_ckpt.py), and [`eval_free_choice.py`](scripts/eval_free_choice.py). An exported model directory, rather than a bare LoRA adapter, is needed by the latter's model-loading path.
+
+For example, with the corresponding checkpoint already exported on the H200 setup:
+
+```bash
+python scripts/eval_free_choice.py \
+  --model checkpoints/sc4001_rl_bal/global_step_300/hf \
+  --labels results/val_450_labels.jsonl \
+  --mode free --samples 1 --max-tokens 4096 --dtype bfloat16 \
+  --out results/rl_free_choice_free_reproduction.json
+```
+
+Use `--mode fast` or `--mode think` for its forced-mode controls, keeping the other settings and output filenames explicit. **This evaluates validation questions and generates new responses with a 4,096-token cap.** Its forced-thinking path injects `Alright`; it is not the same protocol as the frozen-model 16,384-token canonical test replay. Keep these results separate unless a new, explicitly matched evaluation is performed. The internal RL training environment and exact run configuration still need to accompany any corresponding final-report claim.
+
+## 6. Regenerate the fixed-mode baseline answers
+
+This is the expensive GPU path; it is unnecessary for Sections 3–4 when replaying the committed grades. Use the recorded V100 inference/scoring environment and preserve the model/tokenizer, seeds, precision and sampling protocol. The historical baseline uses temperature 0.6, top-p 0.95, top-k -1 and a 16,384-token response limit, with natural EOS and the script's NoThinking prefix accounting.
+
+The existing baseline was produced in **two stages**: first the original subset containing eight AIME questions, then the remaining 22 AIME questions. The second script depends on the first stage's saved manifest and responses. Run both stages, not the subset script alone, to obtain the canonical all-30-AIME result.
+
+Inside an allocated GPU job, from the repository root:
+
+```bash
+# Stage 1: 330 GSM8K + 125 MATH-500 + the historical 8-question AIME subset.
+python scripts/eval_baseline_subset.py --action preflight
+python scripts/eval_baseline_subset.py --action generate --mode nothinking
+python scripts/eval_baseline_subset.py --action generate --mode thinking
+python scripts/eval_baseline_subset.py --action score
+
+# Stage 2: add the remaining 22 AIME questions, then combine all 30.
+python scripts/extend_aime_full.py --action preflight
+python scripts/extend_aime_full.py --action generate --mode nothinking
+python scripts/extend_aime_full.py --action generate --mode thinking
+python scripts/extend_aime_full.py --action score
+```
+
+The corresponding NTU launchers are [`ntu_baseline_subset.sbatch`](scripts/ntu_baseline_subset.sbatch) and [`ntu_aime_full.sbatch`](scripts/ntu_aime_full.sbatch). Complete and verify the first stage before launching the second.
+
+Outputs are under `outputs/baseline_subset_25pct_seed42/` and `outputs/baseline_aime_remaining_seed42/`; the latter's **`summary_combined.json`** is the combined baseline summary. Raw generation/scoring outputs are not automatically a replacement for the normalized committed replay inputs in `results/baseline_1p5b/`. Preserve the existing benchmark evidence and validate IDs, schema and provenance before building a new replay dataset.
+
+Scoring uses [`src/adapt_think_rm.py`](src/adapt_think_rm.py). Do not replace strict evaluation with answer-format repair while claiming to reproduce the same baseline. Hardware / kernel changes can also change sampled generations; exact cached-result replay and fresh model execution are different levels of reproduction.
+
+## 7. Evaluation conventions
+
+**Selection:** use training data for fitting and validation for checkpoint, objective/hyperparameter and threshold selection. Freeze the configuration before held-out evaluation. Test sweeps are descriptive analyses, not permission to choose a new test-optimal model or operating point.
+
+**Cost:** reported routing curves measure generated-output tokens. Router encoding, prefill, training, wall-clock latency and memory are not included unless separately measured. Token savings alone are not an end-to-end speedup claim.
+
+**Aggregation:** aggregate AIME's 16 draws within each question before pooled question-level comparisons. A three-dataset macro average and a pooled average over 485 questions are different quantities; report them separately.
+
+**Budget matching:** equal NoThinking percentages do not guarantee equal token costs. Global Random is an expected fixed-probability reference at a matched measured cost. Validation-calibrated threshold transfer and descriptive test-cost interpolation must remain separately labeled.
+
+**Metrics:** the reporting code's raw nAUC-AC integrates accuracy advantage over the cost-matched Random reference in accuracy-fraction × token units. Its `mean_gain_pp` normalizes by the cost span. Do not directly compare raw nAUC values across different token spans or datasets as though they were percentages.
+
+**Uncertainty and provenance:** validation exploration is not held-out evidence, random-router seeds do not quantify dataset uncertainty, and synthetic self-tests do not validate missing experiment artifacts. Preserve strict/repaired labels, generation limits and checkpoint identities in any cross-method comparison.
+
+## 8. Reproduction records and submission artifacts
+
+For each reported experiment, retain the exact command, selected configuration, source revision, dependency versions, model/checkpoint hashes, data hashes and output paths. For a Git checkout:
+
+```bash
+mkdir -p reproduction_record
+git rev-parse HEAD > reproduction_record/git_commit.txt
+python --version > reproduction_record/python_version.txt
+python -m pip freeze > reproduction_record/pip_freeze.txt
+sha256sum results/val_450_labels.jsonl \
+  data/splits/adaptthink_original_baseline_seed42.json \
+  > reproduction_record/data_checksums.sha256
+# Run on the allocated GPU node for GPU experiments:
+nvidia-smi > reproduction_record/nvidia_smi.txt
+```
+
+A submission ZIP made only from tracked Git files will **not** include the server-local artifacts listed above. To make a final-report result independently reproducible, package its required small inputs / predictions / heads and give an accessible, versioned location for any large weights or generation caches that cannot be included. Do not include virtual environments, access tokens, SSH keys or unrelated cluster files.
+
+Before final submission, resolve the remaining experiment-specific gaps: the strict training JSONL for historical external training; missing trainers for any training result selected for the report; exact trained checkpoints and their hashes; saved validation/test predictions for report-only reproduction; and a tested environment record. Exercise the selected commands from the actual submission package, not merely from a populated research server. Source-code commenting and the final choice of submitted code remain a separate packaging task; this README does not claim that review is complete.
+
+## Research documentation and attribution
+
+| Document / directory | Contents |
+| --- | --- |
+| [Route A](docs/ROUTE_A_PLAN.md) | External-router objectives, validation results and utility studies |
+| [Route E](docs/ROUTE_E_RESEARCH.md) | Frozen representations, prompt prefixes and downstream routing |
+| [Three-router evaluation](docs/README_three_router_test.md) | Artifact contracts, held-out evaluation and reporting protocol |
+| [Route B](docs/ROUTE_B_PLAN.md) | Historical internal-router design and label-generation rationale; some planned filenames are superseded by current scripts |
+| [NTU environment](docs/NTU_HPC_ENV.md) | Recorded inference setup, benchmarks and historical baseline procedure |
+| [Utility result tables](results/route_a/utility_objective/) | Compact archived validation sweep results |
+| [Historical README](https://github.com/miyaliao/AdaptThink/blob/4efc5e870c0b54908af347ae4379b8ae38d284da/README.md) | Earlier label-repair tables, calibration discussion and cluster notes retained in Git history |
+
+The original AdaptThink method, upstream training infrastructure and released reference data belong to their respective authors. Please credit the [AdaptThink paper](https://arxiv.org/abs/2505.13417), [THU-KEG repository](https://github.com/THU-KEG/AdaptThink), the base-model authors and the benchmark creators when using this work. See [LICENSE](LICENSE) for this repository's license; models and datasets retain their own terms.
